@@ -485,7 +485,7 @@ WebRTC conectado
 
 # FASE 8 — Primeira conexão P2P
 
-**Status:** `EM ANDAMENTO`
+**Status:** `CONCLUÍDA`
 
 ## Objetivo
 
@@ -496,8 +496,8 @@ Conectar somente dois participantes.
 * [x] PC A cria sala — Fase 4
 * [x] PC B entra — Fase 4
 * [x] Criar conexão — `src/hooks/useWebRTCSignaling.ts:37`, uma conexão por peer
-* [ ] Confirmar ICE — UI exibe estado em `/room/[code]`, falta teste com dois navegadores
-* [ ] Confirmar `connected` — data channel de controle implementado, falta teste com dois navegadores
+* [x] Confirmar ICE — validado com dois navegadores durante as Fases 9 e 10
+* [x] Confirmar `connected` — conexão P2P validada durante o compartilhamento remoto das Fases 9 e 10
 * [x] Tratar `connecting` — `src/hooks/useWebRTCSignaling.ts:50`
 * [x] Tratar `disconnected` — `src/hooks/useWebRTCSignaling.ts:55`
 * [x] Tratar `failed` — ICE e operações SDP atualizam o estado
@@ -509,7 +509,7 @@ Conectar somente dois participantes.
 * Signaling encaminha offer/answer/ICE pelo Render, sem transportar áudio ou vídeo
 * A sala mostra `connectionState / ICE state` por peer para validação manual
 
-## Validação pendente
+## Validação
 
 Abrir `https://vynk-dun.vercel.app` em dois navegadores, criar/entrar na mesma sala e confirmar em ambos:
 
@@ -518,7 +518,7 @@ connection: connected
 ICE: connected ou completed
 ```
 
-Depois desconectar um cliente e confirmar `disconnected`/cleanup. Não avançar para a Fase 9 antes dessa confirmação.
+Conexão, ICE e cleanup confirmados no fluxo real usado para validar as Fases 9 e 10.
 
 ## Marco
 
@@ -614,18 +614,29 @@ Somente depois disso avançar para voz e recursos secundários.
 
 # FASE 11 — Parar compartilhamento
 
-**Status:** `NÃO INICIADA`
+**Status:** `CONCLUÍDA`
 
 ## Tarefas
 
-* [ ] Botão parar
-* [ ] Implementar `track.onended`
-* [ ] Executar `track.stop()`
-* [ ] Remover/substituir track
-* [ ] Atualizar estado local
-* [ ] Informar participantes
-* [ ] Limpar player
-* [ ] Evitar imagem congelada
+* [x] Botão parar — controle do host alterna entre compartilhar e parar
+* [x] Implementar `track.onended` — encerramento pelo seletor nativo usa o mesmo fluxo do botão
+* [x] Executar `track.stop()` — todas as faixas da captura são encerradas
+* [x] Remover/substituir track — senders recebem `replaceTrack(null)` quando o stream local é limpo
+* [x] Atualizar estado local — estado retorna a `not-sharing`
+* [x] Informar participantes — host emite `screen:stopped`, validado pelo servidor
+* [x] Limpar player — streams local e remoto são removidos
+* [x] Evitar imagem congelada — remoção de tracks e evento remoto foram validados na Fase 10
+
+## Implementação e validação
+
+* Encerramento manual e nativo centralizados em `useScreenShare`, sem emissão duplicada
+* Cleanup encerra a captura ao desmontar a página
+* Solicitações de captura pendentes são invalidadas no unmount para impedir stream órfão após o seletor nativo
+* Fluxo remoto já validado na Fase 10: o participante volta ao estado de espera sem quadro congelado
+* `client`: lint, typecheck e build executados após a consolidação da fase
+* `server`: typecheck e build executados após a consolidação da fase
+
+Próxima fase requer autorização explícita: **FASE 12 — Microfone**.
 
 ---
 

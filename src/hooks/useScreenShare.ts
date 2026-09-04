@@ -1,56 +1,81 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type ScreenShareState = "not-sharing" | "requesting-permission" | "sharing" | "stopping" | "error";
 
-export function useScreenShare(onNativeStop?: () => void) {
+export function useScreenShare(onStopped?: () => void) {
   const [state, setState] = useState<ScreenShareState>("not-sharing");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const activeStream = useRef<MediaStream | null>(null);
+  const captureRequest = useRef(0);
+  const capturePending = useRef(false);
+  const mounted = useRef(false);
 
-  const stopStream = useCallback((current: MediaStream) => {
+  const stopStream = useCallback((current: MediaStream, notify = true) => {
+    if (activeStream.current !== current) return;
+    current.getVideoTracks().forEach((track) => { track.onended = null; });
     current.getTracks().forEach((track) => track.stop());
+    activeStream.current = null;
     setStream(null);
     setState("not-sharing");
-  }, []);
+    if (notify) onStopped?.();
+  }, [onStopped]);
 
   const start = useCallback(async () => {
+    if (capturePending.current || activeStream.current) return null;
+    capturePending.current = true;
+    const request = ++captureRequest.current;
     setError(null);
     setState("requesting-permission");
     try {
       const current = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      if (!mounted.current || request !== captureRequest.current) {
+        current.getTracks().forEach((track) => track.stop());
+        return null;
+      }
       const videoTrack = current.getVideoTracks()[0];
       if (!videoTrack) {
         current.getTracks().forEach((track) => track.stop());
         throw new Error("Nenhuma faixa de vídeo foi disponibilizada.");
       }
-      videoTrack.onended = () => {
-        stopStream(current);
-        onNativeStop?.();
-      };
+      activeStream.current = current;
+      videoTrack.onended = () => stopStream(current);
       setStream(current);
       setState("sharing");
       return current;
     } catch (cause) {
+      if (!mounted.current || request !== captureRequest.current) return null;
       const denied = cause instanceof DOMException && cause.name === "NotAllowedError";
       setError(denied ? "Permissão para compartilhar a tela foi negada." : "Não foi possível compartilhar a tela.");
       setState("error");
       return null;
+    } finally {
+      if (request === captureRequest.current) capturePending.current = false;
     }
-  }, [onNativeStop, stopStream]);
+  }, [stopStream]);
 
   const stop = useCallback(() => {
-    if (!stream) return;
+    const current = activeStream.current;
+    if (!current) return;
     setState("stopping");
-    stopStream(stream);
-  }, [stopStream, stream]);
+    stopStream(current);
+  }, [stopStream]);
 
-  const cleanup = useCallback(() => {
-    if (stream) stream.getTracks().forEach((track) => track.stop());
-    setStream(null);
-    setState("not-sharing");
-  }, [stream]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      captureRequest.current += 1;
+      capturePending.current = false;
+      const current = activeStream.current;
+      if (!current) return;
+      current.getVideoTracks().forEach((track) => { track.onended = null; });
+      current.getTracks().forEach((track) => track.stop());
+      activeStream.current = null;
+    };
+  }, []);
 
-  return { state, stream, error, start, stop, cleanup };
+  return { state, stream, error, start, stop };
 }

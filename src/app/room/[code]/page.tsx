@@ -63,10 +63,10 @@ export default function RoomPage() {
     return () => { socket.off("reconnect" as never, onReconnect); socket.io.off("reconnect", onReconnect); };
   }, [socket, roomId, promptName, name]);
 
-  const handleNativeScreenStop = useCallback(() => {
+  const handleScreenStopped = useCallback(() => {
     socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
   }, [roomId, socket]);
-  const screen = useScreenShare(handleNativeScreenStop);
+  const screen = useScreenShare(handleScreenStopped);
 
   const handleRemoteStream = useCallback((peerId: string, stream: MediaStream) => {
     setRemoteStreams((current) => {
@@ -106,7 +106,6 @@ export default function RoomPage() {
     if (!isHost) return;
     if (screen.state === "sharing") {
       screen.stop();
-      socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
       return;
     }
     const stream = await screen.start();
@@ -149,14 +148,14 @@ export default function RoomPage() {
             {!displayStream && <div className="text-zinc-400 text-center p-6">
               <div className="text-4xl mb-3">🖥️</div>
               <p className="text-sm">{isHost ? "Você é o host — compartilhe sua tela quando quiser." : "Aguardando host compartilhar a tela…"}</p>
-              <p className="text-xs text-zinc-500 mt-2">Fase 9: captura local via WebRTC, sem mídia no backend.</p>
+              <p className="text-xs text-zinc-500 mt-2">A transmissão acontece diretamente entre os participantes.</p>
               {screen.error && <p className="text-xs text-red-400 mt-2">{screen.error}</p>}
             </div>}
             {isHost && <div className="absolute top-3 left-3 bg-violet-600 text-white text-xs px-2 py-1 rounded-full">HOST</div>}
           </div>
           <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
             {isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className={`rounded-full px-4 py-2 text-sm font-medium text-white ${screen.state === "sharing" ? "bg-red-600" : "bg-violet-600"} disabled:opacity-50`}>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "⏹ Parar tela" : "🖥 Compartilhar tela"}</button>}
-            <span>Fase 9 — tela local:</span>
+            <span>{screen.state === "sharing" ? "Sua tela está sendo compartilhada." : "Conexão:"}</span>
             {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state} / ICE ${iceStates[peerId] ?? "new"}`).join(" · ")}
           </div>
           {isHost && <p className="px-2 text-center text-[11px] text-zinc-500">Para trocar de aba durante a transmissão, selecione <strong>Tela inteira</strong> no seletor do navegador e habilite o áudio do sistema quando disponível. Ao escolher uma única aba, o navegador fixa a captura nela.</p>}
