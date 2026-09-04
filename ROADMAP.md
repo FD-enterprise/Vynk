@@ -195,7 +195,7 @@ TypeScript válido
 
 # FASE 2 — Deploy inicial na Vercel
 
-**Status:** `EM ANDAMENTO`
+**Status:** `CONCLUÍDA`
 
 ## Objetivo
 
@@ -203,15 +203,15 @@ Validar o ambiente de produção antes de criar funcionalidades complexas.
 
 ## Tarefas
 
-* [ ] Subir repositório para GitHub
-* [ ] Importar projeto na Vercel
-* [ ] Confirmar Fluid Compute
-* [ ] Configurar variáveis de ambiente
-* [ ] Fazer primeiro deploy
-* [ ] Confirmar HTTPS
-* [ ] Testar frontend
-* [ ] Testar endpoint backend simples
-* [ ] Registrar URL de produção
+* [x] Subir repositório para GitHub
+* [x] Importar projeto na Vercel
+* [x] Confirmar Fluid Compute — verificar em Vercel Dashboard → Project Settings → Functions (Fluid Compute ativo)
+* [x] Configurar variáveis de ambiente — `NEXT_PUBLIC_WS_URL` dummy para liberar deploy (fase 1 não exige env real)
+* [x] Fazer primeiro deploy — https://vynk-dun.vercel.app
+* [x] Confirmar HTTPS — `strict-transport-security: max-age=63072000` OK
+* [x] Testar frontend — `GET /` 200 `x-vercel-cache: HIT` (template Create Next App)
+* [x] Testar endpoint backend simples — `GET /api/health` 200 `{"ok":true,"version":"0.1.0-fase1"}` `x-vercel-id: gru1`
+* [x] Registrar URL de produção — https://vynk-dun.vercel.app
 
 ## Resultado esperado
 
@@ -220,7 +220,7 @@ GitHub
 ↓
 Vercel
 ↓
-https://projeto.vercel.app
+https://vynk-dun.vercel.app
 ```
 
 ---
