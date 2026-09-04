@@ -94,7 +94,7 @@ export default function RoomPage() {
     onRemotePeerRemoved: handleRemotePeerRemoved,
   });
 
-  const remoteScreenStream = [...remoteStreams.values()].find((stream) => stream.getVideoTracks().length > 0) ?? null;
+  const remoteScreenStream = [...remoteStreams.values()].find((stream) => stream.getVideoTracks().some((track) => !track.muted && track.readyState === "live")) ?? null;
   const displayStream = isHost ? screen.stream : remoteScreenStream;
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = displayStream;
