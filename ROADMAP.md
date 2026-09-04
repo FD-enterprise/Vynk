@@ -733,20 +733,29 @@ Se o navegador bloquear a reprodução automática, a sala exibe `Liberar áudio
 
 # FASE 15 — Terceiro participante
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Objetivo
 
-Migrar de uma conexão única para coleção de peers.
+Usar uma conexão WebRTC por par de participantes, mantendo a tela do host disponível para todos e a voz em todos os sentidos.
 
 ## Tarefas
 
-* [ ] Estrutura `Map<peerId, RTCPeerConnection>`
-* [ ] Criar conexão por participante
-* [ ] Remover conexão ao sair
-* [ ] Evitar peer duplicado
-* [ ] Compartilhar tela do host para todos
-* [ ] Compartilhar voz
+* [x] Estrutura `Map<peerId, RTCPeerConnection>`
+* [x] Criar conexão por participante — host inicia conexões de tela e voz; participantes iniciam conexões de voz entre si
+* [x] Remover conexão ao sair — cleanup individual remove conexão, streams e estados do peer
+* [x] Evitar peer duplicado — iniciador determinístico entre participantes não-host
+* [x] Compartilhar tela do host para todos
+* [x] Compartilhar voz — cada par negocia um transceptor dedicado de microfone
+
+## Validação pendente
+
+* [ ] Testar sala com host e dois participantes em três navegadores
+* [ ] Confirmar tela do host para os dois participantes
+* [ ] Confirmar voz host → participantes e participantes → host
+* [ ] Confirmar voz entre os dois participantes
+* [ ] Confirmar ausência de ofertas/conexões duplicadas
+* [ ] Sair com um participante e confirmar cleanup sem afetar os demais
 
 ---
 

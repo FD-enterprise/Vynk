@@ -142,7 +142,7 @@ export default function RoomPage() {
     roomId,
     selfId: socket?.id ?? "",
     isHost,
-    peers: participants.filter((participant) => participant.presence === "online"),
+    peers: participants.filter((participant) => participant.presence === "online").map((participant) => ({ id: participant.id, isHost: participant.isHost })),
     localScreenStream: screen.stream,
     localMicrophoneStream: microphone.stream,
     onRemoteStream: handleRemoteStream,
