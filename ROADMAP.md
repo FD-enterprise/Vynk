@@ -227,7 +227,7 @@ https://vynk-dun.vercel.app
 
 # FASE 3 — Prova de WebSocket na Vercel
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Objetivo
 
