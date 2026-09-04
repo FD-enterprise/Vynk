@@ -674,7 +674,7 @@ A reprodução e validação de voz entre os participantes pertencem à **FASE 1
 
 # FASE 13 — Voz bidirecional
 
-**Status:** `EM ANDAMENTO`
+**Status:** `CONCLUÍDA`
 
 ## Marco
 
@@ -700,12 +700,12 @@ PC A ouve
 
 Se o navegador bloquear a reprodução automática, a sala exibe `Liberar áudio da chamada`. O clique tenta reproduzir novamente todos os streams bloqueados após uma ação explícita do usuário.
 
-## Validação pendente
+## Validação no deploy
 
-* [ ] Confirmar voz do host para o participante em dois navegadores
-* [ ] Confirmar voz do participante para o host em dois navegadores
-* [ ] Confirmar ausência de eco/áudio duplicado
-* [ ] Sair da sala e confirmar que o áudio remoto é removido
+* [x] Voz do host para o participante confirmada em dois navegadores
+* [x] Voz do participante para o host confirmada em dois navegadores
+* [x] Ausência de eco/áudio duplicado confirmada
+* [x] Saída da sala remove o áudio remoto corretamente
 
 ---
 
