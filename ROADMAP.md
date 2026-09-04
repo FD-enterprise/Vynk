@@ -426,22 +426,38 @@ Próxima fase requer autorização explícita: **FASE 7 — Signaling WebRTC**.
 
 # FASE 7 — Signaling WebRTC
 
-**Status:** `NÃO INICIADA`
+**Status:** `CONCLUÍDA`
 
 ## Tarefas
 
-* [ ] Criar `RTCPeerConnection`
-* [ ] Configurar STUN
-* [ ] Criar offer
-* [ ] Enviar offer por WebSocket
-* [ ] Receber offer
-* [ ] Criar answer
-* [ ] Enviar answer
-* [ ] Receber answer
-* [ ] Enviar ICE candidate
-* [ ] Receber ICE candidate
-* [ ] Validar `peerId`
-* [ ] Impedir signaling entre salas diferentes
+* [x] Criar `RTCPeerConnection` — `src/hooks/useWebRTCSignaling.ts:39`
+* [x] Configurar STUN — `stun:stun.l.google.com:19302` (`src/hooks/useWebRTCSignaling.ts:22`)
+* [x] Criar offer — host cria data channel de controle e SDP (`src/hooks/useWebRTCSignaling.ts:78`)
+* [x] Enviar offer por WebSocket — `webrtc:offer`
+* [x] Receber offer — `src/hooks/useWebRTCSignaling.ts:96`
+* [x] Criar answer — `src/hooks/useWebRTCSignaling.ts:103`
+* [x] Enviar answer — `webrtc:answer`
+* [x] Receber answer — `src/hooks/useWebRTCSignaling.ts:116`
+* [x] Enviar ICE candidate — `src/hooks/useWebRTCSignaling.ts:43`
+* [x] Receber ICE candidate — `src/hooks/useWebRTCSignaling.ts:127`
+* [x] Validar `peerId` — servidor verifica origem e destino pertencentes à mesma sala (`server/src/index.ts:105`)
+* [x] Impedir signaling entre salas diferentes — validação de `roomId` no servidor e cliente
+
+## Implementação
+
+* `Map<peerId, RTCPeerConnection>` mantido no hook; host inicia offer para cada peer online
+* ICE recebido antes do SDP remoto é armazenado e aplicado após `setRemoteDescription`
+* Estados expostos na UI: `new`, `connecting`, `connected`, `disconnected`, `failed`, `closed`
+* Esta fase negocia somente canal de controle; mídia não foi adicionada ainda e será implementada nas Fases 8–10
+
+## Validação
+
+* `client`: `npm run lint`, `npx tsc --noEmit` e `npm run build` passaram
+* `server`: `npm run typecheck`, `npm run build` e `npm start` passaram
+* Teste Socket.IO: offer, answer e ICE foram encaminhados entre membros
+* Teste de segurança: signaling de socket fora da sala foi bloqueado
+
+Próxima fase requer autorização explícita: **FASE 8 — Primeira conexão P2P**.
 
 ## Resultado
 

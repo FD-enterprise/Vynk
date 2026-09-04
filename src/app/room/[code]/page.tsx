@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { EVENTS, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
 import { getParticipantSessionId } from "@/lib/socket";
+import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
 
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
@@ -56,6 +57,14 @@ export default function RoomPage() {
     return () => { socket.off("reconnect" as never, onReconnect); socket.io.off("reconnect", onReconnect); };
   }, [socket, roomId, promptName, name]);
 
+  const { states: peerStates } = useWebRTCSignaling({
+    socket,
+    roomId,
+    selfId: socket?.id ?? "",
+    isHost,
+    peers: participants.filter((participant) => participant.presence === "online"),
+  });
+
   const handleLeave = () => { socket?.emit(EVENTS.ROOM_LEAVE, { roomId }); router.push("/"); };
   const handleCopy = async () => { await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`); };
   const myId = socket?.id ?? "";
@@ -98,7 +107,10 @@ export default function RoomPage() {
             </div>
             {isHost && <div className="absolute top-3 left-3 bg-violet-600 text-white text-xs px-2 py-1 rounded-full">HOST</div>}
           </div>
-          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">Fase 5 — presença online e reconexão básica. WebRTC será adicionado nas próximas fases.</div>
+          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
+            <span>Fase 7 — signaling WebRTC:</span>
+            {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state}`).join(" · ")}
+          </div>
         </div>
         <aside className="w-full lg:w-[360px] flex flex-col border-t lg:border-t-0 lg:border-l bg-white dark:bg-zinc-900 dark:border-zinc-800">
           <div className="p-4">
