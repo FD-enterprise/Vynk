@@ -565,7 +565,7 @@ Próxima fase requer autorização explícita: **FASE 10 — Recepção da tela*
 
 # FASE 10 — Recepção da tela
 
-**Status:** `EM ANDAMENTO`
+**Status:** `CONCLUÍDA`
 
 ## Tarefas
 
@@ -579,14 +579,14 @@ Próxima fase requer autorização explícita: **FASE 10 — Recepção da tela*
 
 * [x] Host compartilha tela em um navegador — tela inteira exibida corretamente, confirmado pelo usuário após ajuste de transceivers
 * [x] Participante remoto vê a tela em outro navegador — sem congelamento após ajuste de tracks, confirmado pelo usuário
-* [ ] Áudio remoto é reproduzido quando disponibilizado pelo navegador/OS
-* [ ] Encerrar compartilhamento remove a tela remota sem imagem congelada
+* [x] Áudio remoto é reproduzido quando disponibilizado pelo navegador/OS — confirmado pelo usuário
+* [x] Encerrar compartilhamento remove a tela remota sem imagem congelada — confirmado pelo usuário
 
 Limitação observada: ao escolher uma única aba com áudio no seletor nativo, o navegador fixa a captura nessa aba. Para trocar de aba durante a transmissão, selecionar `Tela inteira` e habilitar áudio do sistema quando o navegador/OS oferecer essa opção. Não há workaround implementado para contornar essa restrição.
 
 Correção aplicada: transceptores de vídeo/áudio são negociados desde a conexão inicial e as faixas são atualizadas com `replaceTrack`, evitando congelamento durante a captura (`src/hooks/useWebRTCSignaling.ts:41`, `src/hooks/useWebRTCSignaling.ts:115`).
 
-Próxima fase requer autorização explícita: **FASE 11 — Parar compartilhamento**.
+Próxima fase requer autorização explícita: **FASE 11 — Parar compartilhamento**. Aguardando autorização do usuário.
 
 ## PRIMEIRO GRANDE MARCO
 
