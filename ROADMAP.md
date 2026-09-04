@@ -761,7 +761,7 @@ Usar uma conexão WebRTC por par de participantes, mantendo a tela do host dispo
 
 # FASE 16 — Até cinco participantes
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Testes
 
@@ -771,12 +771,21 @@ Usar uma conexão WebRTC por par de participantes, mantendo a tela do host dispo
 
 ## Tarefas
 
-* [ ] Limite máximo
-* [ ] Mensagem de sala cheia
-* [ ] Cleanup individual
-* [ ] Testar CPU
-* [ ] Testar consumo de upload do host
-* [ ] Observar qualidade da transmissão
+* [x] Limite máximo — constante compartilhada de 5 participantes, com servidor como autoridade
+* [x] Mensagem de sala cheia — rejeição clara ao tentar entrar na sexta vaga
+* [x] Cleanup individual — peer removido sem encerrar as conexões restantes
+* [x] Preparar análise de CPU — sala/peer mantidos sem renegociação extra
+* [x] Preparar medição de upload do host — métricas de mídia coletadas por conexão
+* [x] Observar qualidade da transmissão — status agregado de mídia baseado em RTT/perda/estado
+
+## Validação pendente
+
+* [ ] Testar sala com 3 pessoas
+* [ ] Testar sala com 4 pessoas
+* [ ] Testar sala com 5 pessoas
+* [ ] Confirmar rejeição da sexta entrada com mensagem de sala cheia
+* [ ] Medir CPU e upload do host durante compartilhamento de tela e voz
+* [ ] Confirmar que a qualidade permanece estável com todos os participantes
 
 ---
 

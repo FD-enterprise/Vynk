@@ -1,4 +1,5 @@
 import type { Room, Participant } from "./types.js";
+import { MAX_PARTICIPANTS } from "./events.js";
 
 const rooms = new Map<string, Room>();
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem I/O/0/1 ambíguos
@@ -21,7 +22,7 @@ export function createRoom(hostId: string, hostName: string, sessionId: string):
 export function addParticipant(roomId: string, socketId: string, name: string, sessionId: string): Participant | null {
   const room = getRoom(roomId);
   if (!room) return null;
-  if (room.participants.size >= 5) return null;
+  if (room.participants.size >= MAX_PARTICIPANTS) return null;
   const p: Participant = { id: socketId, sessionId, name, isHost: false, joinedAt: Date.now(), micMuted: true, presence: "online" };
   room.participants.set(socketId, p);
   return p;

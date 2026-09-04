@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { EVENTS, type Participant } from "@/lib/events";
+import { EVENTS, MAX_PARTICIPANTS, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
 import { getParticipantSessionId } from "@/lib/socket";
 import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
@@ -137,7 +137,7 @@ export default function RoomPage() {
     });
   }, []);
 
-  const { states: peerStates, iceStates } = useWebRTCSignaling({
+  const { states: peerStates, iceStates, quality: peerQuality } = useWebRTCSignaling({
     socket,
     roomId,
     selfId: socket?.id ?? "",
@@ -187,6 +187,8 @@ export default function RoomPage() {
   };
   const hasBlockedAudio = [...audioPlaybackStates.values()].some((state) => state === "blocked");
   const hasAudioError = [...audioPlaybackStates.values()].some((state) => state === "error");
+  const qualityValues = Object.values(peerQuality);
+  const mediaQuality = qualityValues.length === 0 ? null : qualityValues.includes("degraded") ? "instável" : qualityValues.every((value) => value === "good") ? "estável" : "conectando";
   const myId = socket?.id ?? "";
 
   if (needsName) {
@@ -211,7 +213,7 @@ export default function RoomPage() {
           <span className={`text-xs px-2 py-1 rounded-full ${connState === "connected" ? "bg-green-100 text-green-700" : connState === "reconnecting" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{connState}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden sm:inline text-xs text-zinc-500">👥 {participants.filter((p) => p.presence !== "offline").length}/5</span>
+          <span className="hidden sm:inline text-xs text-zinc-500">👥 {participants.filter((p) => p.presence !== "offline").length}/{MAX_PARTICIPANTS}</span>
           <button onClick={handleCopy} className="text-xs border rounded-full px-3 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800">Copiar link</button>
           <button onClick={handleLeave} className="text-xs bg-zinc-900 dark:bg-white dark:text-zinc-900 text-white rounded-full px-3 py-1.5">Sair</button>
         </div>
@@ -236,6 +238,7 @@ export default function RoomPage() {
             {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="rounded-full bg-amber-100 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/50">🔊 Liberar áudio da chamada</button></>}
             <span>{screen.state === "sharing" ? "Sua tela está sendo compartilhada." : "Conexão:"}</span>
             {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state} / ICE ${iceStates[peerId] ?? "new"}`).join(" · ")}
+            {mediaQuality && <span aria-label={`qualidade da mídia ${mediaQuality}`}>Mídia {mediaQuality}</span>}
             {microphone.error && <span className="basis-full text-red-600 dark:text-red-400" role="alert">{microphone.error}</span>}
             {hasAudioError && <span className="basis-full text-red-600 dark:text-red-400" role="alert">Não foi possível reproduzir o áudio de um participante. Aguarde a reconexão ou entre novamente na sala.</span>}
           </div>
@@ -243,7 +246,7 @@ export default function RoomPage() {
         </div>
         <aside className="w-full lg:w-[360px] flex flex-col border-t lg:border-t-0 lg:border-l bg-white dark:bg-zinc-900 dark:border-zinc-800">
           <div className="p-4">
-            <h3 className="text-xs font-semibold tracking-widest text-zinc-500 uppercase">Participantes — {participants.filter((p) => p.presence !== "offline").length}/5</h3>
+            <h3 className="text-xs font-semibold tracking-widest text-zinc-500 uppercase">Participantes — {participants.filter((p) => p.presence !== "offline").length}/{MAX_PARTICIPANTS}</h3>
             <ul className="mt-3 space-y-2">
               {participants.map((p) => (
                 <li key={p.id} className="flex items-center justify-between text-sm">

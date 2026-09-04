@@ -9,6 +9,7 @@ type NegotiationMode = "offer" | "answer";
 type SignalDescription = { type: "offer" | "answer"; sdp: string };
 type SignalCandidate = { candidate: string; sdpMid?: string | null; sdpMLineIndex?: number | null; usernameFragment?: string | null };
 export type PeerConnectionState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
+export type PeerQuality = "good" | "degraded" | "unknown";
 
 type Props = {
   socket: Socket | null;
@@ -38,6 +39,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   const previousIsHost = useRef(isHost);
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
+  const [quality, setQuality] = useState<Record<string, PeerQuality>>({});
 
   const setPeerState = useCallback((peerId: string, state: PeerConnectionState) => {
     setStates((current) => current[peerId] === state ? current : { ...current, [peerId]: state });
@@ -260,6 +262,11 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         delete next[peerId];
         return next;
       });
+      setQuality((current) => {
+        const next = { ...current };
+        delete next[peerId];
+        return next;
+      });
     });
   }, [isHost, onRemotePeerRemoved]);
 
@@ -300,6 +307,11 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         delete next[peerId];
         return next;
       });
+      setQuality((current) => {
+        const next = { ...current };
+        delete next[peerId];
+        return next;
+      });
     });
   }, [onRemotePeerRemoved, peers, selfId]);
 
@@ -313,5 +325,48 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     remoteMicrophoneStreams.current.clear();
   }, []);
 
-  return { states, iceStates };
+  useEffect(() => {
+    let cancelled = false;
+    const sampleQuality = async () => {
+      const entries = [...connections.current.entries()];
+      const next: Record<string, PeerQuality> = {};
+      await Promise.all(entries.map(async ([peerId, connection]) => {
+        if (connection.connectionState !== "connected") {
+          next[peerId] = connection.connectionState === "new" || connection.connectionState === "connecting" ? "unknown" : "degraded";
+          return;
+        }
+        try {
+          const reports = await connection.getStats();
+          let packetsLost = 0;
+          let packetsReceived = 0;
+          let roundTripTime: number | null = null;
+          let hasMedia = false;
+          reports.forEach((report) => {
+            if (report.type === "inbound-rtp" || report.type === "outbound-rtp") hasMedia = true;
+            if (report.type === "inbound-rtp") {
+              packetsLost += report.packetsLost ?? 0;
+              packetsReceived += report.packetsReceived ?? 0;
+            }
+            if (report.type === "candidate-pair" && report.state === "succeeded" && typeof report.currentRoundTripTime === "number") {
+              roundTripTime = report.currentRoundTripTime;
+            }
+          });
+          if (!hasMedia) {
+            next[peerId] = "unknown";
+            return;
+          }
+          const lossRatio = packetsReceived + packetsLost > 0 ? packetsLost / (packetsReceived + packetsLost) : 0;
+          next[peerId] = lossRatio > 0.05 || (roundTripTime !== null && roundTripTime > 0.4) ? "degraded" : "good";
+        } catch {
+          next[peerId] = "unknown";
+        }
+      }));
+      if (!cancelled) setQuality(next);
+    };
+    void sampleQuality();
+    const timer = window.setInterval(() => { void sampleQuality(); }, 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
+
+  return { states, iceStates, quality };
 }

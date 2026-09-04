@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { EVENTS } from "./events.js";
+import { EVENTS, MAX_PARTICIPANTS } from "./events.js";
 import { roomCreateSchema, roomJoinSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, microphoneStateSchema } from "./validation.js";
 import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, findParticipantBySession, reconnectParticipant, markReconnecting } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
@@ -71,7 +71,7 @@ io.on("connection", (socket) => {
       socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
       return;
     }
-    if (room.participants.size >= 5) { socket.emit(EVENTS.ROOM_ERROR, { message: "Sala cheia (máx. 5 participantes)." }); return; }
+    if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { message: `Sala cheia (máx. ${MAX_PARTICIPANTS} participantes).` }); return; }
     const p = addParticipant(upper, socket.id, name, parsed.data.sessionId);
     if (!p) { socket.emit(EVENTS.ROOM_ERROR, { message: "Não foi possível entrar na sala." }); return; }
     socket.join(upper);
