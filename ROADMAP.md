@@ -819,7 +819,7 @@ Usar uma conexão WebRTC por par de participantes, mantendo a tela do host dispo
 
 # FASE 18 — Reconexão
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Fluxo
 
@@ -837,14 +837,21 @@ reconstrói WebRTC
 
 ## Tarefas
 
-* [ ] Detectar queda
-* [ ] Estado `reconnecting`
-* [ ] Reconectar socket
-* [ ] Reentrar na sala
-* [ ] Reconstruir peers
-* [ ] Recuperar estado da transmissão
-* [ ] Evitar duplicação
-* [ ] Mostrar erro definitivo
+* [x] Detectar queda — Socket.IO e WebRTC limpam a sessão antiga
+* [x] Estado `reconnecting` — interface acompanha a tentativa de retorno
+* [x] Reconectar socket — até 5 tentativas automáticas
+* [x] Reentrar na sala — `sessionId` persistente recupera a presença
+* [x] Reconstruir peers — nova lista de participantes dispara a malha WebRTC
+* [x] Recuperar estado da transmissão — streams locais continuam disponíveis para nova oferta
+* [x] Evitar duplicação — conexões antigas, listeners e streams remotos são removidos antes da reconstrução
+* [x] Mostrar erro definitivo — após esgotar as tentativas, a sala orienta atualizar a página
+
+## Validação pendente
+
+* [ ] Desconectar e reconectar o navegador dentro da janela de recuperação
+* [ ] Confirmar retorno da lista de participantes
+* [ ] Confirmar retorno de microfone e tela sem duplicação
+* [ ] Confirmar erro após falha definitiva de reconexão
 
 ---
 

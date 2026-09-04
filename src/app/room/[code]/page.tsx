@@ -13,7 +13,7 @@ export default function RoomPage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
   const roomId = ((params?.code as string) ?? "").toUpperCase();
-  const { socket, state: connState } = useSocket();
+  const { socket, state: connState, error: socketError } = useSocket();
   const [name] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("vynk_name") || "" : ""));
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isHost, setIsHost] = useState(false);
@@ -68,6 +68,7 @@ export default function RoomPage() {
     const onParticipants = (data: { participants: Participant[] }) => { setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
     const onHostChanged = (data: { hostId: string }) => { setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId }))); setIsHost(data.hostId === socket.id); };
     const onError = (data: { message: string }) => setError(data.message);
+    const onSocketDisconnect = () => setParticipants([]);
     const onScreenStopped = () => setRemoteStreams(new Map());
     const onMicrophoneState = (data: { roomId: string; participantId: string; muted: boolean }) => {
       if (data.roomId !== roomId) return;
@@ -85,6 +86,7 @@ export default function RoomPage() {
     socket.on(EVENTS.SCREEN_STOPPED, onScreenStopped);
     socket.on(EVENTS.MICROPHONE_STATE, onMicrophoneState);
     socket.on(EVENTS.CHAT_MESSAGE, onChatMessage);
+    socket.on("disconnect", onSocketDisconnect);
     const emitJoin = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() });
     if (socket.connected) emitJoin(); else socket.once("connect", emitJoin);
     return () => {
@@ -96,12 +98,13 @@ export default function RoomPage() {
       socket.off(EVENTS.SCREEN_STOPPED, onScreenStopped);
       socket.off(EVENTS.MICROPHONE_STATE, onMicrophoneState);
       socket.off(EVENTS.CHAT_MESSAGE, onChatMessage);
+      socket.off("disconnect", onSocketDisconnect);
     };
   }, [socket, roomId, name, promptName, needsName]);
 
   useEffect(() => {
     if (!socket) return;
-    const onReconnect = () => { const n = (localStorage.getItem("vynk_name") || promptName || name).trim(); if (n && roomId) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: n, sessionId: getParticipantSessionId() }); };
+    const onReconnect = () => { setError(null); const n = (localStorage.getItem("vynk_name") || promptName || name).trim(); if (n && roomId) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: n, sessionId: getParticipantSessionId() }); };
     socket.on("reconnect" as never, onReconnect);
     socket.io.on("reconnect", onReconnect);
     return () => { socket.off("reconnect" as never, onReconnect); socket.io.off("reconnect", onReconnect); };
@@ -258,6 +261,7 @@ export default function RoomPage() {
         </div>
       </header>
       {error && <div className="mx-3 sm:mx-4 mt-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {socketError && <div className="mx-3 sm:mx-4 mt-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2 text-sm text-red-700" role="alert">{socketError}</div>}
       {[...remoteMicrophoneStreams.entries()].map(([peerId, stream]) => <RemoteAudio key={peerId} peerId={peerId} stream={stream} onPlaybackStateChange={handleAudioPlaybackState} />)}
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         <div className="flex-1 flex flex-col p-3 sm:p-4 gap-3 min-h-[40vh] lg:min-h-0">

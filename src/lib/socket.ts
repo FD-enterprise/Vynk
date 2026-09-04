@@ -18,7 +18,7 @@ export function getSignalingSocket(): Socket {
   socket = io(url, {
     autoConnect: true,
     reconnection: true,
-    reconnectionAttempts: Infinity,
+    reconnectionAttempts: 5,
     reconnectionDelay: 1000,
     transports: ["websocket", "polling"],
   });

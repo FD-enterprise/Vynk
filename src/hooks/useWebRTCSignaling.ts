@@ -45,6 +45,36 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     setStates((current) => current[peerId] === state ? current : { ...current, [peerId]: state });
   }, []);
 
+  const resetConnections = useCallback(() => {
+    const peerIds = [...connections.current.keys()];
+    connections.current.forEach((connection) => connection.close());
+    connections.current.clear();
+    pendingCandidates.current.clear();
+    microphoneTransceivers.current.clear();
+    remotePeerIsHost.current.clear();
+    remoteStreams.current.clear();
+    remoteMicrophoneStreams.current.clear();
+    peerIds.forEach((peerId) => onRemotePeerRemoved(peerId));
+    setStates((current) => {
+      if (peerIds.length === 0) return current;
+      const next = { ...current };
+      peerIds.forEach((peerId) => delete next[peerId]);
+      return next;
+    });
+    setIceStates((current) => {
+      if (peerIds.length === 0) return current;
+      const next = { ...current };
+      peerIds.forEach((peerId) => delete next[peerId]);
+      return next;
+    });
+    setQuality((current) => {
+      if (peerIds.length === 0) return current;
+      const next = { ...current };
+      peerIds.forEach((peerId) => delete next[peerId]);
+      return next;
+    });
+  }, [onRemotePeerRemoved]);
+
   const createPeer = useCallback((peerId: string, mode: NegotiationMode, remoteIsHost: boolean) => {
     const existing = connections.current.get(peerId);
     if (existing) return existing;
@@ -233,6 +263,12 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   }, [createPeer, flushCandidates, localMicrophoneStream, peers, roomId, selfId, setPeerState, socket]);
 
   useEffect(() => {
+    if (!socket) return;
+    socket.on("disconnect", resetConnections);
+    return () => { socket.off("disconnect", resetConnections); };
+  }, [resetConnections, socket]);
+
+  useEffect(() => {
     const microphoneTrack = localMicrophoneStream?.getAudioTracks()[0] ?? null;
     microphoneTransceivers.current.forEach((transceiver, peerId) => {
       void transceiver.sender.replaceTrack(microphoneTrack).catch(() => setPeerState(peerId, "failed"));
@@ -271,7 +307,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   }, [isHost, onRemotePeerRemoved]);
 
   useEffect(() => {
-    if (!socket || !selfId) return;
+    if (!socket?.connected || !selfId) return;
     const screenChanged = previousScreenStream.current !== localScreenStream;
     previousScreenStream.current = localScreenStream;
     if (isHost && screenChanged) {
