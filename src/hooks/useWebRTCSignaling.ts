@@ -41,13 +41,10 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     if (existing) return existing;
 
     const connection = new RTCPeerConnection(RTC_CONFIGURATION);
-    const screenTransceivers = isHost ? new Map([
-      ["video", connection.addTransceiver("video", { direction: "sendonly" })],
-      ["audio", connection.addTransceiver("audio", { direction: "sendonly" })],
-    ]) : new Map<string, RTCRtpTransceiver>();
-    localScreenStream?.getTracks().forEach((track) => {
-      void screenTransceivers.get(track.kind)?.sender.replaceTrack(track);
-    });
+    if (isHost) {
+      connection.addTransceiver("video", { direction: "sendonly" });
+      connection.addTransceiver("audio", { direction: "sendonly" });
+    }
     connection.ontrack = (event) => {
       const incoming = remoteStreams.current.get(peerId) ?? new MediaStream();
       const tracks = event.streams[0]?.getTracks() ?? [event.track];
@@ -85,7 +82,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     connections.current.set(peerId, connection);
     setPeerState(peerId, "new");
     return connection;
-  }, [isHost, localScreenStream, onRemoteStream, roomId, setPeerState, socket]);
+  }, [isHost, onRemoteStream, roomId, setPeerState, socket]);
 
   const flushCandidates = useCallback(async (peerId: string, connection: RTCPeerConnection) => {
     const pending = pendingCandidates.current.get(peerId) ?? [];
@@ -102,6 +99,10 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     const controlChannel = connection.createDataChannel("vynk-control");
     controlChannel.onopen = () => setPeerState(peerId, "connected");
     try {
+      for (const track of localScreenStream?.getTracks() ?? []) {
+        const transceiver = connection.getTransceivers().find((candidate) => candidate.receiver.track.kind === track.kind);
+        if (transceiver) await transceiver.sender.replaceTrack(track);
+      }
       setPeerState(peerId, "connecting");
       const offer = await connection.createOffer();
       await connection.setLocalDescription(offer);
@@ -109,7 +110,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     } catch {
       setPeerState(peerId, "failed");
     }
-  }, [createPeer, roomId, setPeerState, socket]);
+  }, [createPeer, localScreenStream, roomId, setPeerState, socket]);
 
   const renegotiateScreen = useCallback(async (peerId: string) => {
     const connection = createPeer(peerId);
