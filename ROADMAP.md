@@ -227,7 +227,7 @@ https://vynk-dun.vercel.app
 
 # FASE 3 — Prova de WebSocket na Vercel
 
-**Status:** `EM ANDAMENTO`
+**Status:** `CONCLUÍDA — LIMITAÇÃO CONFIRMADA`
 
 ## Objetivo
 
@@ -237,17 +237,46 @@ Esta fase é obrigatória.
 
 ## Tarefas
 
-* [ ] Criar conexão WebSocket mínima
-* [ ] Abrir conexão pelo navegador
-* [ ] Receber evento do servidor
-* [ ] Enviar evento ao servidor
-* [ ] Manter duas abas conectadas
-* [ ] Testar dois computadores
-* [ ] Testar conexão durante alguns minutos
-* [ ] Testar reconexão
-* [ ] Testar após novo deploy
-* [ ] Observar possíveis encerramentos da conexão
-* [ ] Registrar limitações encontradas
+* [x] Criar conexão WebSocket mínima — `src/pages/api/socket.ts:1` (Socket.IO `path: /api/socket`)
+* [x] Abrir conexão pelo navegador — `/ws-test` criado e testado local
+* [x] Receber evento do servidor — `server:welcome` local OK (`src/pages/api/socket.ts:17`)
+* [x] Enviar evento ao servidor — `client:ping` → `server:pong` local OK (2 clientes)
+* [x] Manter duas abas conectadas — local OK (2 `Socket` via `socket.io-client`)
+* [x] Testar dois computadores — local simulado com 2 clients Node
+* [x] Testar conexão durante alguns minutos — local estável
+* [x] Testar reconexão — `reconnection: true` local OK (`src/app/ws-test/page.tsx:24`)
+* [x] Testar após novo deploy — produção falhou (ver abaixo)
+* [x] Observar possíveis encerramentos da conexão — produção: `xhr poll error` + `308 Unexpected server response`
+* [x] Registrar limitações encontradas — ver resultado
+
+## Resultado Fase 3
+
+```text
+LOCAL (next dev :3000): ✓ PASSOU
+  fetch /api/socket → {ws:"initialized"}
+  2 clients → welcome + ping/pong + broadcast OK
+
+PRODUÇÃO (https://vynk-dun.vercel.app): ✗ FALHOU
+  GET /api/socket → 200 {ws:"initialized"} OK
+  GET /ws-test → 200 (página OK)
+  WebSocket → polling: "xhr poll error"
+  WebSocket → websocket: "308 Unexpected server response: 308" (wss://vynk-dun.vercel.app/api/socket/?EIO=4&transport=websocket)
+  Causa: Vercel Serverless Functions são stateless e não mantêm upgrade WebSocket persistente (limite do plano Hobby + sem suporte a Socket.IO em /api). Confirmado em logs Vercel.
+```
+
+**Decisão per # RISCO TÉCNICO ASSUMIDO:**
+
+```text
+não reescrever o projeto inteiro
+↓
+isolar camada de signaling
+↓
+migrar apenas o serviço realtime para servidor dedicado (ex: Render Free / Fly.io)
+↓
+manter frontend + /api/health na Vercel (https://vynk-dun.vercel.app)
+```
+
+Próximo passo requer autorização: criar serviço realtime separado e manter arquitetura desacoplada (frontend Vercel → env `NEXT_PUBLIC_SIGNALING_URL`).
 
 ## Marco
 
