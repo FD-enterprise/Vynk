@@ -34,10 +34,15 @@ export default function RoomPage() {
   }, [roomId, socket]);
   const microphone = useMicrophone(handleMicrophoneState);
   const microphoneStateRef = useRef(microphone.state);
+  const microphoneMutedRef = useRef(microphone.muted);
 
   useEffect(() => {
     microphoneStateRef.current = microphone.state;
   }, [microphone.state]);
+
+  useEffect(() => {
+    microphoneMutedRef.current = microphone.muted;
+  }, [microphone.muted]);
 
   useEffect(() => {
     if (!name) {
@@ -54,18 +59,23 @@ export default function RoomPage() {
       setParticipants(data.participants);
       const me = data.participants.find((p) => p.id === socket.id);
       setIsHost(!!me?.isHost);
-      socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted: microphoneStateRef.current !== "active" });
+      socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted: microphoneStateRef.current !== "active" || microphoneMutedRef.current });
     };
     const onParticipants = (data: { participants: Participant[] }) => { setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
     const onHostChanged = (data: { hostId: string }) => { setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId }))); setIsHost(data.hostId === socket.id); };
     const onError = (data: { message: string }) => setError(data.message);
     const onScreenStopped = () => setRemoteStreams(new Map());
+    const onMicrophoneState = (data: { roomId: string; participantId: string; muted: boolean }) => {
+      if (data.roomId !== roomId) return;
+      setParticipants((current) => current.map((participant) => participant.id === data.participantId ? { ...participant, micMuted: data.muted } : participant));
+    };
     socket.on(EVENTS.ROOM_JOINED, onJoined);
     socket.on(EVENTS.ROOM_PARTICIPANTS, onParticipants);
     socket.on(EVENTS.PRESENCE_UPDATE, onParticipants);
     socket.on(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
     socket.on(EVENTS.ROOM_ERROR, onError);
     socket.on(EVENTS.SCREEN_STOPPED, onScreenStopped);
+    socket.on(EVENTS.MICROPHONE_STATE, onMicrophoneState);
     const emitJoin = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() });
     if (socket.connected) emitJoin(); else socket.once("connect", emitJoin);
     return () => {
@@ -75,6 +85,7 @@ export default function RoomPage() {
       socket.off(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off(EVENTS.SCREEN_STOPPED, onScreenStopped);
+      socket.off(EVENTS.MICROPHONE_STATE, onMicrophoneState);
     };
   }, [socket, roomId, name, promptName, needsName]);
 
@@ -160,6 +171,10 @@ export default function RoomPage() {
     if (microphone.state === "active" || microphone.state === "requesting-permission") return;
     await microphone.start();
   };
+  const handleToggleMicrophone = () => {
+    if (microphone.state !== "active") return;
+    microphone.toggle();
+  };
   const handleEnableCallAudio = () => {
     const players = [...document.querySelectorAll<HTMLAudioElement>("[data-vynk-remote-audio]")];
     for (const player of players) {
@@ -217,7 +232,7 @@ export default function RoomPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
             {isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className={`rounded-full px-4 py-2 text-sm font-medium text-white ${screen.state === "sharing" ? "bg-red-600" : "bg-violet-600"} disabled:opacity-50`}>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "⏹ Parar tela" : "🖥 Compartilhar tela"}</button>}
-            {microphone.state === "active" ? <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-medium text-green-700 dark:bg-green-950/40 dark:text-green-300" role="status">🎙 Microfone ativo</span> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800">{microphone.state === "requesting-permission" ? "Solicitando microfone…" : microphone.state === "error" ? "Tentar microfone novamente" : "🎙 Ativar microfone"}</button>}
+            {microphone.state === "active" ? <button onClick={handleToggleMicrophone} aria-pressed={microphone.muted} className={`rounded-full px-4 py-2 text-sm font-medium ${microphone.muted ? "border border-zinc-300 text-zinc-800 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800" : "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-950/40 dark:text-green-300 dark:hover:bg-green-900/50"}`}>{microphone.muted ? "🔇 Desmutar microfone" : "🎙 Mutar microfone"}</button> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800">{microphone.state === "requesting-permission" ? "Solicitando microfone…" : microphone.state === "error" ? "Tentar microfone novamente" : "🎙 Ativar microfone"}</button>}
             {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="rounded-full bg-amber-100 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/50">🔊 Liberar áudio da chamada</button></>}
             <span>{screen.state === "sharing" ? "Sua tela está sendo compartilhada." : "Conexão:"}</span>
             {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state} / ICE ${iceStates[peerId] ?? "new"}`).join(" · ")}
@@ -233,7 +248,7 @@ export default function RoomPage() {
               {participants.map((p) => (
                 <li key={p.id} className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${p.presence === "online" ? (p.id === myId ? "bg-violet-600" : "bg-green-500") : p.presence === "reconnecting" ? "bg-amber-500" : "bg-zinc-400"}`} />{p.name}{p.isHost && <span className="text-[10px] bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-full">HOST</span>}{p.id === myId && <span className="text-xs text-zinc-400">(você)</span>}</span>
-                  <span className="text-xs text-zinc-500">{p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconectando…" : "offline"}</span>
+                  <span className="flex items-center gap-2 text-xs text-zinc-500"><span aria-label={p.micMuted ? "microfone mutado" : "microfone ativo"}>{p.micMuted ? "🔇" : "🎙️"}</span>{p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconectando…" : "offline"}</span>
                 </li>
               ))}
               {participants.length === 0 && <li className="text-xs text-zinc-500">Carregando…</li>}

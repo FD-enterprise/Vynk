@@ -6,6 +6,7 @@ export type MicrophoneState = "off" | "requesting-permission" | "active" | "erro
 
 export function useMicrophone(onStateChange?: (muted: boolean) => void) {
   const [state, setState] = useState<MicrophoneState>("off");
+  const [muted, setMuted] = useState(true);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeStream = useRef<MediaStream | null>(null);
@@ -25,8 +26,21 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
     activeStream.current = null;
     setStream(null);
     setState("off");
+    setMuted(true);
     if (notify) onStateChangeRef.current?.(true);
   }, []);
+
+  const setTrackMuted = useCallback((nextMuted: boolean) => {
+    const track = activeStream.current?.getAudioTracks()[0];
+    if (!track || track.readyState !== "live") return;
+    track.enabled = !nextMuted;
+    setMuted(nextMuted);
+    onStateChangeRef.current?.(nextMuted);
+  }, []);
+
+  const mute = useCallback(() => setTrackMuted(true), [setTrackMuted]);
+  const unmute = useCallback(() => setTrackMuted(false), [setTrackMuted]);
+  const toggle = useCallback(() => setTrackMuted(!muted), [muted, setTrackMuted]);
 
   const start = useCallback(async () => {
     if (capturePending.current || activeStream.current) return null;
@@ -49,9 +63,11 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
       }
 
       activeStream.current = current;
+      audioTrack.enabled = true;
       audioTrack.onended = () => stopStream(current);
       setStream(current);
       setState("active");
+      setMuted(false);
       onStateChangeRef.current?.(false);
       return current;
     } catch (cause) {
@@ -82,9 +98,10 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
       current.getAudioTracks().forEach((track) => { track.onended = null; });
       current.getTracks().forEach((track) => track.stop());
       activeStream.current = null;
+      setMuted(true);
       onStateChangeRef.current?.(true);
     };
   }, []);
 
-  return { state, stream, error, start };
+  return { state, muted, stream, error, start, mute, unmute, toggle };
 }

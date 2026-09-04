@@ -711,16 +711,23 @@ Se o navegador bloquear a reprodução automática, a sala exibe `Liberar áudio
 
 # FASE 14 — Mute / Unmute
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Tarefas
 
-* [ ] Mutar
-* [ ] Desmutar
-* [ ] Mostrar estado local
-* [ ] Mostrar estado remoto
-* [ ] Sincronizar via WebSocket
-* [ ] Recuperar estado após reconexão
+* [x] Mutar — desabilita a faixa sem encerrar a captura ou renegociar WebRTC
+* [x] Desmutar — reativa a mesma faixa com ação explícita
+* [x] Mostrar estado local — botão indica Mutar/Desmutar e usa `aria-pressed`
+* [x] Mostrar estado remoto — cada participante exibe o indicador de microfone
+* [x] Sincronizar via WebSocket — evento `microphone:state` atualiza a sala
+* [x] Recuperar estado após reconexão — o estado atual é reenviado ao reentrar
+
+## Validação pendente
+
+* [ ] Mutar em um navegador e confirmar silêncio no outro
+* [ ] Desmutar e confirmar retorno da voz sem recarregar a sala
+* [ ] Confirmar atualização do indicador remoto
+* [ ] Confirmar preservação do estado após reconexão
 
 ---
 
