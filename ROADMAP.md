@@ -791,21 +791,29 @@ Usar uma conexão WebRTC por par de participantes, mantendo a tela do host dispo
 
 # FASE 17 — Chat
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Tarefas
 
-* [ ] Enviar mensagem
-* [ ] Receber mensagem
-* [ ] Autor
-* [ ] Timestamp
-* [ ] Histórico temporário
-* [ ] Validar vazio
-* [ ] Limite de tamanho
-* [ ] Rate limiting básico
-* [ ] Validar participação
-* [ ] Texto puro
-* [ ] Não renderizar HTML arbitrário
+* [x] Enviar mensagem — botão e Enter enviam pela sala conectada
+* [x] Receber mensagem — evento `chat:message` atualiza o painel em tempo real
+* [x] Autor — cada mensagem identifica o participante
+* [x] Timestamp — horário local é exibido em cada mensagem
+* [x] Histórico temporário — mensagens ficam na sessão e são limitadas às 200 mais recentes
+* [x] Validar vazio — envio vazio é bloqueado no cliente e no servidor
+* [x] Limite de tamanho — limite compartilhado de 500 caracteres
+* [x] Rate limiting básico — servidor limita a 5 mensagens por 10 segundos
+* [x] Validar participação — servidor aceita mensagens apenas de participantes da sala
+* [x] Texto puro — conteúdo é renderizado sem interpretação de HTML
+* [x] Não renderizar HTML arbitrário — JSX mantém tags como texto
+
+## Validação pendente
+
+* [ ] Enviar e receber mensagens entre dois participantes
+* [ ] Confirmar Enter envia e Shift+Enter quebra linha
+* [ ] Confirmar rejeição de mensagem vazia e acima de 500 caracteres
+* [ ] Confirmar rate limiting com mais de 5 mensagens em 10 segundos
+* [ ] Confirmar que HTML/script é exibido como texto, sem execução
 
 ---
 

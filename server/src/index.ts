@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { EVENTS, MAX_PARTICIPANTS } from "./events.js";
+import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH } from "./events.js";
 import { roomCreateSchema, roomJoinSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, microphoneStateSchema } from "./validation.js";
 import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, findParticipantBySession, reconnectParticipant, markReconnecting } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
@@ -160,7 +160,7 @@ io.on("connection", (socket) => {
     if (isRateLimited(socket.id)) { socket.emit(EVENTS.ROOM_ERROR, { message: "Muitas mensagens. Aguarde um pouco." }); return; }
     const author = room.participants.get(socket.id);
     if (!author) return;
-    const msg: ChatMessage = { id: `${Date.now()}-${socket.id.slice(0, 4)}`, roomId: upper, authorId: socket.id, authorName: author.name, text: text.slice(0, 500), timestamp: Date.now() };
+    const msg: ChatMessage = { id: `${Date.now()}-${socket.id.slice(0, 4)}`, roomId: upper, authorId: socket.id, authorName: author.name, text: text.slice(0, MAX_CHAT_MESSAGE_LENGTH), timestamp: Date.now() };
     io.to(upper).emit(EVENTS.CHAT_MESSAGE, msg);
   });
 

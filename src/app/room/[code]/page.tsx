@@ -1,7 +1,7 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { EVENTS, MAX_PARTICIPANTS, type Participant } from "@/lib/events";
+import { EVENTS, MAX_CHAT_MESSAGE_LENGTH, MAX_PARTICIPANTS, type ChatMessage, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
 import { getParticipantSessionId } from "@/lib/socket";
 import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
@@ -18,12 +18,16 @@ export default function RoomPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatError, setChatError] = useState<string | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [remoteMicrophoneStreams, setRemoteMicrophoneStreams] = useState<Map<string, MediaStream>>(new Map());
   const [audioPlaybackStates, setAudioPlaybackStates] = useState<Map<string, RemoteAudioPlaybackState>>(new Map());
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const chatEndRef = useRef<HTMLLIElement>(null);
 
   const handleScreenStopped = useCallback(() => {
     socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
@@ -69,6 +73,10 @@ export default function RoomPage() {
       if (data.roomId !== roomId) return;
       setParticipants((current) => current.map((participant) => participant.id === data.participantId ? { ...participant, micMuted: data.muted } : participant));
     };
+    const onChatMessage = (data: ChatMessage) => {
+      if (data.roomId !== roomId) return;
+      setChatMessages((current) => [...current, data].slice(-200));
+    };
     socket.on(EVENTS.ROOM_JOINED, onJoined);
     socket.on(EVENTS.ROOM_PARTICIPANTS, onParticipants);
     socket.on(EVENTS.PRESENCE_UPDATE, onParticipants);
@@ -76,6 +84,7 @@ export default function RoomPage() {
     socket.on(EVENTS.ROOM_ERROR, onError);
     socket.on(EVENTS.SCREEN_STOPPED, onScreenStopped);
     socket.on(EVENTS.MICROPHONE_STATE, onMicrophoneState);
+    socket.on(EVENTS.CHAT_MESSAGE, onChatMessage);
     const emitJoin = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() });
     if (socket.connected) emitJoin(); else socket.once("connect", emitJoin);
     return () => {
@@ -86,6 +95,7 @@ export default function RoomPage() {
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off(EVENTS.SCREEN_STOPPED, onScreenStopped);
       socket.off(EVENTS.MICROPHONE_STATE, onMicrophoneState);
+      socket.off(EVENTS.CHAT_MESSAGE, onChatMessage);
     };
   }, [socket, roomId, name, promptName, needsName]);
 
@@ -156,6 +166,10 @@ export default function RoomPage() {
     if (videoRef.current) videoRef.current.srcObject = displayStream;
   }, [displayStream]);
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [chatMessages]);
+
   const handleLeave = () => { socket?.emit(EVENTS.ROOM_LEAVE, { roomId }); router.push("/"); };
   const handleCopy = async () => { await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`); };
   const handleShare = async () => {
@@ -174,6 +188,31 @@ export default function RoomPage() {
   const handleToggleMicrophone = () => {
     if (microphone.state !== "active") return;
     microphone.toggle();
+  };
+  const handleChatSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const text = chatDraft.trim();
+    if (!text) {
+      setChatError("Digite uma mensagem antes de enviar.");
+      return;
+    }
+    if (text.length > MAX_CHAT_MESSAGE_LENGTH) {
+      setChatError(`A mensagem deve ter no máximo ${MAX_CHAT_MESSAGE_LENGTH} caracteres.`);
+      return;
+    }
+    if (!socket?.connected) {
+      setChatError("A conexão caiu. Aguarde a reconexão para enviar.");
+      return;
+    }
+    socket.emit(EVENTS.CHAT_SEND, { roomId, text });
+    setChatDraft("");
+    setChatError(null);
+  };
+  const handleChatKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
   };
   const handleEnableCallAudio = () => {
     const players = [...document.querySelectorAll<HTMLAudioElement>("[data-vynk-remote-audio]")];
@@ -257,6 +296,36 @@ export default function RoomPage() {
               {participants.length === 0 && <li className="text-xs text-zinc-500">Carregando…</li>}
             </ul>
           </div>
+          <section className="flex min-h-[280px] flex-1 flex-col border-t dark:border-zinc-800" aria-label="Chat da sala">
+            <div className="flex items-center justify-between px-4 py-3">
+              <h3 className="text-xs font-semibold tracking-widest text-zinc-500 uppercase">Chat da sala</h3>
+              <span className="text-[11px] text-zinc-400">{chatMessages.length} {chatMessages.length === 1 ? "mensagem" : "mensagens"}</span>
+            </div>
+            <ol className="flex-1 space-y-3 overflow-y-auto px-4 pb-3" aria-live="polite">
+              {chatMessages.length === 0 && <li className="py-8 text-center text-xs text-zinc-500">Nenhuma mensagem ainda. Diga oi!</li>}
+              {chatMessages.map((message) => {
+                const isMine = message.authorId === myId;
+                return <li key={message.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[88%] rounded-2xl px-3 py-2 ${isMine ? "bg-violet-600 text-white" : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100"}`}>
+                    <div className={`mb-0.5 flex items-baseline gap-2 text-[10px] ${isMine ? "text-violet-100" : "text-zinc-500 dark:text-zinc-400"}`}>
+                      <span className="font-medium">{isMine ? "Você" : message.authorName}</span>
+                      <time dateTime={new Date(message.timestamp).toISOString()}>{new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+                    </div>
+                    <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
+                  </div>
+                </li>;
+              })}
+              <li ref={chatEndRef} aria-hidden="true" />
+            </ol>
+            <form onSubmit={handleChatSubmit} className="border-t p-3 dark:border-zinc-800">
+              {chatError && <p className="mb-2 text-xs text-red-600 dark:text-red-400" role="alert">{chatError}</p>}
+              <div className="flex items-end gap-2">
+                <textarea value={chatDraft} onChange={(event) => { setChatDraft(event.target.value); if (chatError) setChatError(null); }} onKeyDown={handleChatKeyDown} maxLength={MAX_CHAT_MESSAGE_LENGTH} rows={2} placeholder="Escreva uma mensagem…" aria-label="Mensagem do chat" className="min-w-0 flex-1 resize-none rounded-xl border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-zinc-700" />
+                <button type="submit" disabled={!chatDraft.trim() || !socket?.connected} className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">Enviar</button>
+              </div>
+              <p className="mt-1 text-right text-[10px] text-zinc-400">Enter envia · Shift+Enter quebra linha · {chatDraft.length}/{MAX_CHAT_MESSAGE_LENGTH}</p>
+            </form>
+          </section>
           <div className="p-4 border-t dark:border-zinc-800 text-xs text-zinc-500">
             <p>Link: <span className="font-mono">{typeof window !== "undefined" ? window.location.href : `/room/${roomId}`}</span></p>
             <p className="mt-1">Compartilhe este link para entrar por código.</p>
