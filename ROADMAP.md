@@ -296,7 +296,15 @@ Somente avançar quando dois clientes conseguirem se comunicar.
 
 # FASE 4 — Criação de salas
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
+
+## Nota isolamento (pós Fase 3)
+
+* Signaling isolado em `server/` (Node + Socket.IO) — deploy Render: `https://vynk-mwxh.onrender.com` (`server/render.yaml:1`)
+* Frontend Vercel (`https://vynk-dun.vercel.app`) consome via `NEXT_PUBLIC_SIGNALING_URL` (`src/lib/socket.ts:5`, `.env.example:4`)
+* Fallback produção: `https://vynk-mwxh.onrender.com` se env não setado
+
+**Status original:** `NÃO INICIADA`
 
 ## Tarefas
 

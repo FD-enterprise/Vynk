@@ -5,7 +5,7 @@ let socket: Socket | null = null;
 
 export function getSignalingSocket(): Socket {
   if (socket) return socket;
-  const url = process.env.NEXT_PUBLIC_SIGNALING_URL || "http://localhost:3001";
+  const url = process.env.NEXT_PUBLIC_SIGNALING_URL || "https://vynk-mwxh.onrender.com";
   socket = io(url, {
     autoConnect: true,
     reconnection: true,
