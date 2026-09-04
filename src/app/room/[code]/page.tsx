@@ -7,6 +7,7 @@ import { getParticipantSessionId } from "@/lib/socket";
 import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
 import { useScreenShare } from "@/hooks/useScreenShare";
 import { useMicrophone } from "@/hooks/useMicrophone";
+import { getRemoteAudioPlaybackState, RemoteAudio, type RemoteAudioPlaybackState } from "@/components/RemoteAudio";
 
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
@@ -18,6 +19,8 @@ export default function RoomPage() {
   const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [remoteMicrophoneStreams, setRemoteMicrophoneStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [audioPlaybackStates, setAudioPlaybackStates] = useState<Map<string, RemoteAudioPlaybackState>>(new Map());
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -90,8 +93,33 @@ export default function RoomPage() {
       return next;
     });
   }, []);
+  const handleRemoteMicrophoneStream = useCallback((peerId: string, stream: MediaStream) => {
+    setRemoteMicrophoneStreams((current) => {
+      const next = new Map(current);
+      next.set(peerId, stream);
+      return next;
+    });
+  }, []);
+  const handleAudioPlaybackState = useCallback((peerId: string, state: RemoteAudioPlaybackState) => {
+    setAudioPlaybackStates((current) => {
+      if (current.get(peerId) === state) return current;
+      const next = new Map(current);
+      next.set(peerId, state);
+      return next;
+    });
+  }, []);
   const handleRemotePeerRemoved = useCallback((peerId: string) => {
     setRemoteStreams((current) => {
+      const next = new Map(current);
+      next.delete(peerId);
+      return next;
+    });
+    setRemoteMicrophoneStreams((current) => {
+      const next = new Map(current);
+      next.delete(peerId);
+      return next;
+    });
+    setAudioPlaybackStates((current) => {
       const next = new Map(current);
       next.delete(peerId);
       return next;
@@ -107,6 +135,7 @@ export default function RoomPage() {
     localScreenStream: screen.stream,
     localMicrophoneStream: microphone.stream,
     onRemoteStream: handleRemoteStream,
+    onRemoteMicrophoneStream: handleRemoteMicrophoneStream,
     onRemotePeerRemoved: handleRemotePeerRemoved,
   });
 
@@ -131,6 +160,18 @@ export default function RoomPage() {
     if (microphone.state === "active" || microphone.state === "requesting-permission") return;
     await microphone.start();
   };
+  const handleEnableCallAudio = () => {
+    const players = [...document.querySelectorAll<HTMLAudioElement>("[data-vynk-remote-audio]")];
+    for (const player of players) {
+      const peerId = player.dataset.vynkRemoteAudio;
+      if (!peerId || audioPlaybackStates.get(peerId) !== "blocked") continue;
+      player.play()
+        .then(() => handleAudioPlaybackState(peerId, "playing"))
+        .catch((cause) => handleAudioPlaybackState(peerId, getRemoteAudioPlaybackState(cause)));
+    }
+  };
+  const hasBlockedAudio = [...audioPlaybackStates.values()].some((state) => state === "blocked");
+  const hasAudioError = [...audioPlaybackStates.values()].some((state) => state === "error");
   const myId = socket?.id ?? "";
 
   if (needsName) {
@@ -161,6 +202,7 @@ export default function RoomPage() {
         </div>
       </header>
       {error && <div className="mx-3 sm:mx-4 mt-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {[...remoteMicrophoneStreams.entries()].map(([peerId, stream]) => <RemoteAudio key={peerId} peerId={peerId} stream={stream} onPlaybackStateChange={handleAudioPlaybackState} />)}
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         <div className="flex-1 flex flex-col p-3 sm:p-4 gap-3 min-h-[40vh] lg:min-h-0">
           <div className="flex-1 relative bg-black rounded-xl overflow-hidden flex items-center justify-center min-h-[240px]">
@@ -176,9 +218,11 @@ export default function RoomPage() {
           <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
             {isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className={`rounded-full px-4 py-2 text-sm font-medium text-white ${screen.state === "sharing" ? "bg-red-600" : "bg-violet-600"} disabled:opacity-50`}>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "⏹ Parar tela" : "🖥 Compartilhar tela"}</button>}
             {microphone.state === "active" ? <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-medium text-green-700 dark:bg-green-950/40 dark:text-green-300" role="status">🎙 Microfone ativo</span> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800">{microphone.state === "requesting-permission" ? "Solicitando microfone…" : microphone.state === "error" ? "Tentar microfone novamente" : "🎙 Ativar microfone"}</button>}
+            {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="rounded-full bg-amber-100 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/50">🔊 Liberar áudio da chamada</button></>}
             <span>{screen.state === "sharing" ? "Sua tela está sendo compartilhada." : "Conexão:"}</span>
             {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state} / ICE ${iceStates[peerId] ?? "new"}`).join(" · ")}
             {microphone.error && <span className="basis-full text-red-600 dark:text-red-400" role="alert">{microphone.error}</span>}
+            {hasAudioError && <span className="basis-full text-red-600 dark:text-red-400" role="alert">Não foi possível reproduzir o áudio de um participante. Aguarde a reconexão ou entre novamente na sala.</span>}
           </div>
           {isHost && <p className="px-2 text-center text-[11px] text-zinc-500">Para trocar de aba durante a transmissão, selecione <strong>Tela inteira</strong> no seletor do navegador e habilite o áudio do sistema quando disponível. Ao escolher uma única aba, o navegador fixa a captura nela.</p>}
         </div>

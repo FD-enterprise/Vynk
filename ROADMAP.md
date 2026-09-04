@@ -674,7 +674,7 @@ A reprodução e validação de voz entre os participantes pertencem à **FASE 1
 
 # FASE 13 — Voz bidirecional
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Marco
 
@@ -690,11 +690,22 @@ PC A ouve
 
 ## Tarefas
 
-* [ ] Envio A → B
-* [ ] Envio B → A
-* [ ] Reproduzir áudio remoto
-* [ ] Evitar áudio duplicado
-* [ ] Tratar saída de participante
+* [x] Envio A → B — transceiver dedicado aceita microfone do host e do participante
+* [x] Envio B → A — answer negocia o mesmo canal como `sendrecv`
+* [x] Reproduzir áudio remoto — um elemento `<audio autoPlay>` recebe o stream de cada peer
+* [x] Evitar áudio duplicado — streams e players são indexados por `peerId`, com deduplicação de tracks
+* [x] Tratar saída de participante — stream, player e estado de autoplay são removidos no cleanup do peer
+
+## Compatibilidade com autoplay
+
+Se o navegador bloquear a reprodução automática, a sala exibe `Liberar áudio da chamada`. O clique tenta reproduzir novamente todos os streams bloqueados após uma ação explícita do usuário.
+
+## Validação pendente
+
+* [ ] Confirmar voz do host para o participante em dois navegadores
+* [ ] Confirmar voz do participante para o host em dois navegadores
+* [ ] Confirmar ausência de eco/áudio duplicado
+* [ ] Sair da sala e confirmar que o áudio remoto é removido
 
 ---
 
