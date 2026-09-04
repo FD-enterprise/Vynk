@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MAX_CHAT_MESSAGE_LENGTH } from "./events.js";
+import { MAX_CHAT_MESSAGE_LENGTH, MAX_ICE_CANDIDATE_LENGTH, MAX_PEER_ID_LENGTH, MAX_SDP_LENGTH } from "./events.js";
 
 export const nameSchema = z.string().trim().min(1, "Nome é obrigatório").max(24, "Nome deve ter no máximo 24 caracteres").regex(/^[\p{L}\p{N}\s._-]+$/u, "Nome contém caracteres inválidos");
 export const sessionIdSchema = z.string().uuid();
@@ -13,16 +13,17 @@ export const chatSendSchema = z.object({ roomId: roomIdSchema, text: z.string().
 export const screenStateSchema = z.object({ roomId: roomIdSchema });
 export const microphoneStateSchema = z.object({ roomId: roomIdSchema, muted: z.boolean() });
 
-export const sdpSchema = z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().min(1) });
-export const offerSchema = z.object({ roomId: roomIdSchema, targetId: z.string().min(1), sdp: sdpSchema });
-export const answerSchema = z.object({ roomId: roomIdSchema, targetId: z.string().min(1), sdp: sdpSchema });
+const peerIdSchema = z.string().min(1).max(MAX_PEER_ID_LENGTH).regex(/^[A-Za-z0-9_-]+$/, "Peer inválido");
+export const sdpSchema = z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().min(1).max(MAX_SDP_LENGTH) });
+export const offerSchema = z.object({ roomId: roomIdSchema, targetId: peerIdSchema, sdp: sdpSchema });
+export const answerSchema = z.object({ roomId: roomIdSchema, targetId: peerIdSchema, sdp: sdpSchema });
 export const iceCandidateSchema = z.object({
   roomId: roomIdSchema,
-  targetId: z.string().min(1),
+  targetId: peerIdSchema,
   candidate: z.object({
-    candidate: z.string().min(1),
-    sdpMid: z.string().nullable().optional(),
+    candidate: z.string().min(1).max(MAX_ICE_CANDIDATE_LENGTH),
+    sdpMid: z.string().max(128).nullable().optional(),
     sdpMLineIndex: z.number().nullable().optional(),
-    usernameFragment: z.string().nullable().optional(),
+    usernameFragment: z.string().max(256).nullable().optional(),
   }),
 });

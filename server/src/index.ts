@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH } from "./events.js";
+import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH, MAX_SOCKET_PAYLOAD_BYTES } from "./events.js";
 import { roomCreateSchema, roomJoinSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, microphoneStateSchema } from "./validation.js";
 import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, findParticipantBySession, reconnectParticipant, markReconnecting } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
@@ -12,22 +12,31 @@ const CLIENT_URL = process.env.CLIENT_URL || "*";
 
 const app = express();
 app.use(cors({ origin: CLIENT_URL === "*" ? true : CLIENT_URL }));
-app.use(express.json());
+app.use(express.json({ limit: "16kb" }));
 app.get("/health", (_req, res) => res.json({ ok: true, uptime: process.uptime(), service: "vynk-signaling" }));
 app.get("/", (_req, res) => res.json({ ok: true, service: "vynk-signaling", docs: "/health" }));
 
 const httpServer = createServer(app);
-const io = new Server(httpServer, { cors: { origin: CLIENT_URL === "*" ? true : CLIENT_URL, methods: ["GET", "POST"] } });
+const io = new Server(httpServer, { cors: { origin: CLIENT_URL === "*" ? true : CLIENT_URL, methods: ["GET", "POST"] }, maxHttpBufferSize: MAX_SOCKET_PAYLOAD_BYTES });
 
-const chatTimestamps = new Map<string, number[]>();
-function isRateLimited(id: string): boolean {
+const rateTimestamps = new Map<string, number[]>();
+function isRateLimited(key: string, max: number, windowMs: number): boolean {
   const now = Date.now();
-  const arr = chatTimestamps.get(id) ?? [];
-  const recent = arr.filter((t) => now - t < 10_000);
-  if (recent.length >= 5) return true;
+  const arr = rateTimestamps.get(key) ?? [];
+  const recent = arr.filter((t) => now - t < windowMs);
+  if (recent.length >= max) return true;
   recent.push(now);
-  chatTimestamps.set(id, recent);
+  rateTimestamps.set(key, recent);
   return false;
+}
+function clearSocketRateLimits(socketId: string): void {
+  for (const key of rateTimestamps.keys()) if (key.endsWith(`:${socketId}`)) rateTimestamps.delete(key);
+}
+function getAuthorizedParticipant(socketId: string, roomId: string) {
+  const room = getRoom(roomId);
+  if (!room) return null;
+  const participant = room.participants.get(socketId);
+  return participant ? { room, participant } : null;
 }
 function emitParticipants(roomId: string) {
   const participants = getParticipants(roomId);
@@ -37,6 +46,7 @@ function emitParticipants(roomId: string) {
 
 io.on("connection", (socket) => {
   socket.on(EVENTS.ROOM_CREATE, (payload: unknown) => {
+    if (isRateLimited(`room:create:${socket.id}`, 5, 60_000)) { socket.emit(EVENTS.ROOM_ERROR, { message: "Muitas tentativas. Aguarde um minuto." }); return; }
     const parsed = roomCreateSchema.safeParse(payload);
     if (!parsed.success) { socket.emit(EVENTS.ROOM_ERROR, { message: parsed.error.issues[0]?.message ?? "Dados inválidos" }); return; }
     const room = createRoom(socket.id, parsed.data.name, parsed.data.sessionId);
@@ -47,6 +57,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on(EVENTS.ROOM_JOIN, (payload: unknown) => {
+    if (isRateLimited(`room:join:${socket.id}`, 20, 60_000)) { socket.emit(EVENTS.ROOM_ERROR, { message: "Muitas tentativas de entrada. Aguarde um minuto." }); return; }
     const parsed = roomJoinSchema.safeParse(payload);
     if (!parsed.success) { socket.emit(EVENTS.ROOM_ERROR, { message: parsed.error.issues[0]?.message ?? "Dados inválidos" }); return; }
     const { roomId, name } = parsed.data;
@@ -83,8 +94,8 @@ io.on("connection", (socket) => {
     const parsed = roomLeaveSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId } = parsed.data;
-    const room = getRoom(roomId);
-    if (!room || !room.participants.has(socket.id)) return;
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    if (!authorized) return;
     const { room: remaining, wasHost } = removeParticipant(roomId, socket.id);
     socket.leave(roomId);
     if (remaining) {
@@ -97,24 +108,30 @@ io.on("connection", (socket) => {
     const parsed = offerSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId, targetId, sdp } = parsed.data;
-    const room = getRoom(roomId);
-    if (!room || !room.participants.has(socket.id) || !room.participants.has(targetId)) return;
+    if (isRateLimited(`webrtc:offer:${socket.id}`, 20, 10_000)) return;
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    const room = authorized?.room;
+    if (!room || !room.participants.has(targetId)) return;
     io.to(targetId).emit(EVENTS.WEBRTC_OFFER, { fromId: socket.id, roomId, sdp });
   });
   socket.on(EVENTS.WEBRTC_ANSWER, (payload: unknown) => {
     const parsed = answerSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId, targetId, sdp } = parsed.data;
-    const room = getRoom(roomId);
-    if (!room || !room.participants.has(socket.id) || !room.participants.has(targetId)) return;
+    if (isRateLimited(`webrtc:answer:${socket.id}`, 20, 10_000)) return;
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    const room = authorized?.room;
+    if (!room || !room.participants.has(targetId)) return;
     io.to(targetId).emit(EVENTS.WEBRTC_ANSWER, { fromId: socket.id, roomId, sdp });
   });
   socket.on(EVENTS.WEBRTC_ICE_CANDIDATE, (payload: unknown) => {
     const parsed = iceCandidateSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId, targetId, candidate } = parsed.data;
-    const room = getRoom(roomId);
-    if (!room || !room.participants.has(socket.id) || !room.participants.has(targetId)) return;
+    if (isRateLimited(`webrtc:ice:${socket.id}`, 120, 10_000)) return;
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    const room = authorized?.room;
+    if (!room || !room.participants.has(targetId)) return;
     io.to(targetId).emit(EVENTS.WEBRTC_ICE_CANDIDATE, { fromId: socket.id, roomId, candidate });
   });
 
@@ -122,7 +139,8 @@ io.on("connection", (socket) => {
     const parsed = screenStateSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId } = parsed.data;
-    const room = getRoom(roomId);
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    const room = authorized?.room;
     if (!room || room.hostId !== socket.id) { socket.emit(EVENTS.ROOM_ERROR, { message: "Apenas o host pode compartilhar a tela." }); return; }
     room.screenSharing = true;
     socket.to(roomId).emit(EVENTS.SCREEN_STARTED, { roomId, hostId: socket.id });
@@ -131,7 +149,7 @@ io.on("connection", (socket) => {
     const parsed = screenStateSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId } = parsed.data;
-    const room = getRoom(roomId);
+    const room = getAuthorizedParticipant(socket.id, roomId)?.room;
     if (!room || room.hostId !== socket.id) return;
     room.screenSharing = false;
     io.to(roomId).emit(EVENTS.SCREEN_STOPPED, { roomId });
@@ -141,10 +159,9 @@ io.on("connection", (socket) => {
     const parsed = microphoneStateSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId, muted } = parsed.data;
-    const room = getRoom(roomId);
-    if (!room || !room.participants.has(socket.id)) return;
-    const participant = room.participants.get(socket.id);
-    if (!participant) return;
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    if (!authorized) return;
+    const { room, participant } = authorized;
     participant.micMuted = muted;
     socket.to(roomId).emit(EVENTS.MICROPHONE_STATE, { roomId, participantId: socket.id, muted });
     emitParticipants(roomId);
@@ -155,18 +172,17 @@ io.on("connection", (socket) => {
     if (!parsed.success) return;
     const { roomId, text } = parsed.data;
     const upper = roomId.toUpperCase();
-    const room = getRoom(upper);
-    if (!room || !room.participants.has(socket.id)) return;
-    if (isRateLimited(socket.id)) { socket.emit(EVENTS.ROOM_ERROR, { message: "Muitas mensagens. Aguarde um pouco." }); return; }
-    const author = room.participants.get(socket.id);
-    if (!author) return;
+    const authorized = getAuthorizedParticipant(socket.id, upper);
+    if (!authorized) return;
+    const { room, participant: author } = authorized;
+    if (isRateLimited(`chat:${socket.id}`, 5, 10_000)) { socket.emit(EVENTS.ROOM_ERROR, { message: "Muitas mensagens. Aguarde um pouco." }); return; }
     const msg: ChatMessage = { id: `${Date.now()}-${socket.id.slice(0, 4)}`, roomId: upper, authorId: socket.id, authorName: author.name, text: text.slice(0, MAX_CHAT_MESSAGE_LENGTH), timestamp: Date.now() };
     io.to(upper).emit(EVENTS.CHAT_MESSAGE, msg);
   });
 
   socket.on("disconnect", () => {
     const room = getRoomBySocket(socket.id);
-    if (!room) { chatTimestamps.delete(socket.id); return; }
+    if (!room) { clearSocketRateLimits(socket.id); return; }
     const pendingRoom = markReconnecting(room.id, socket.id, () => {
       emitParticipants(room.id);
       setTimeout(() => {
@@ -180,7 +196,7 @@ io.on("connection", (socket) => {
         }
       }, 5_000);
     });
-    chatTimestamps.delete(socket.id);
+    clearSocketRateLimits(socket.id);
     if (pendingRoom) emitParticipants(pendingRoom.id);
   });
 });

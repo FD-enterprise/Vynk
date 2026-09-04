@@ -857,21 +857,28 @@ reconstrói WebRTC
 
 # FASE 19 — Segurança
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Tarefas
 
-* [ ] Validar códigos
-* [ ] Validar nomes
-* [ ] Validar peer IDs
-* [ ] Validar mensagens
-* [ ] Validar signaling
-* [ ] Validar participação
-* [ ] Verificar host
-* [ ] Impedir eventos entre salas
-* [ ] Limitar payloads
-* [ ] Rate limit básico
-* [ ] Não confiar no frontend
+* [x] Validar códigos — schemas rejeitam códigos fora do formato esperado
+* [x] Validar nomes — nomes continuam limitados, normalizados e sem caracteres inválidos
+* [x] Validar peer IDs — IDs restritos a caracteres seguros e tamanho máximo
+* [x] Validar mensagens — tamanho máximo centralizado e conteúdo tratado como texto
+* [x] Validar signaling — SDP e ICE possuem schemas e limites próprios
+* [x] Validar participação — cada evento exige participante ativo na sala informada
+* [x] Verificar host — compartilhamento de tela só pode ser iniciado/parado pelo host
+* [x] Impedir eventos entre salas — destinos de signaling precisam pertencer à mesma sala
+* [x] Limitar payloads — limite HTTP e limite de buffer do Socket.IO configurados
+* [x] Rate limit básico — limites por socket para criação, entrada, chat e signaling
+* [x] Não confiar no frontend — servidor mantém autoridade sobre sala, presença e permissões
+
+## Validação pendente
+
+* [ ] Testar payloads inválidos e oversized no ambiente de deploy
+* [ ] Confirmar isolamento entre duas salas com signaling cruzado
+* [ ] Confirmar bloqueio de tela por participante que não é host
+* [ ] Confirmar respostas de rate limit em criação, entrada, chat e signaling
 
 ---
 

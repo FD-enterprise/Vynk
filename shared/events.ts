@@ -20,6 +20,10 @@ export const EVENTS = {
 
 export const MAX_PARTICIPANTS = 5;
 export const MAX_CHAT_MESSAGE_LENGTH = 500;
+export const MAX_PEER_ID_LENGTH = 128;
+export const MAX_SDP_LENGTH = 32_000;
+export const MAX_ICE_CANDIDATE_LENGTH = 2_048;
+export const MAX_SOCKET_PAYLOAD_BYTES = 64 * 1024;
 
 export type PresenceState = "online" | "reconnecting" | "offline";
 export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; joinedAt: number; micMuted: boolean; presence: PresenceState };
