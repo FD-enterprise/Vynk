@@ -3,7 +3,7 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { EVENTS } from "./events.js";
-import { roomCreateSchema, roomJoinSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema } from "./validation.js";
+import { roomCreateSchema, roomJoinSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, microphoneStateSchema } from "./validation.js";
 import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, findParticipantBySession, reconnectParticipant, markReconnecting } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
 
@@ -80,19 +80,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on(EVENTS.ROOM_LEAVE, (payload: unknown) => {
-    const roomId = (payload as { roomId?: string })?.roomId?.toUpperCase();
-    if (!roomId) {
-      const r = getRoomBySocket(socket.id);
-      if (r) {
-        const { room } = removeParticipant(r.id, socket.id);
-        socket.leave(r.id);
-        if (room) { emitParticipants(room.id); io.to(room.id).emit(EVENTS.ROOM_HOST_CHANGED, { hostId: room.hostId }); }
-      }
-      return;
-    }
-    const { room } = removeParticipant(roomId, socket.id);
+    const parsed = roomLeaveSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId } = parsed.data;
+    const room = getRoom(roomId);
+    if (!room || !room.participants.has(socket.id)) return;
+    const { room: remaining, wasHost } = removeParticipant(roomId, socket.id);
     socket.leave(roomId);
-    if (room) { emitParticipants(room.id); io.to(room.id).emit(EVENTS.ROOM_HOST_CHANGED, { hostId: room.hostId }); }
+    if (remaining) {
+      emitParticipants(remaining.id);
+      if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { hostId: remaining.hostId });
+    }
   });
 
   socket.on(EVENTS.WEBRTC_OFFER, (payload: unknown) => {
@@ -121,20 +119,35 @@ io.on("connection", (socket) => {
   });
 
   socket.on(EVENTS.SCREEN_STARTED, (payload: unknown) => {
-    const roomId = (payload as { roomId?: string })?.roomId?.toUpperCase();
-    if (!roomId) return;
+    const parsed = screenStateSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId } = parsed.data;
     const room = getRoom(roomId);
     if (!room || room.hostId !== socket.id) { socket.emit(EVENTS.ROOM_ERROR, { message: "Apenas o host pode compartilhar a tela." }); return; }
     room.screenSharing = true;
     socket.to(roomId).emit(EVENTS.SCREEN_STARTED, { roomId, hostId: socket.id });
   });
   socket.on(EVENTS.SCREEN_STOPPED, (payload: unknown) => {
-    const roomId = (payload as { roomId?: string })?.roomId?.toUpperCase();
-    if (!roomId) return;
+    const parsed = screenStateSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId } = parsed.data;
     const room = getRoom(roomId);
-    if (!room) return;
+    if (!room || room.hostId !== socket.id) return;
     room.screenSharing = false;
     io.to(roomId).emit(EVENTS.SCREEN_STOPPED, { roomId });
+  });
+
+  socket.on(EVENTS.MICROPHONE_STATE, (payload: unknown) => {
+    const parsed = microphoneStateSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId, muted } = parsed.data;
+    const room = getRoom(roomId);
+    if (!room || !room.participants.has(socket.id)) return;
+    const participant = room.participants.get(socket.id);
+    if (!participant) return;
+    participant.micMuted = muted;
+    socket.to(roomId).emit(EVENTS.MICROPHONE_STATE, { roomId, participantId: socket.id, muted });
+    emitParticipants(roomId);
   });
 
   socket.on(EVENTS.CHAT_SEND, (payload: unknown) => {

@@ -7,7 +7,10 @@ export const roomIdSchema = z.string().trim().toUpperCase().length(6, "Código d
 
 export const roomCreateSchema = z.object({ name: nameSchema, sessionId: sessionIdSchema });
 export const roomJoinSchema = z.object({ roomId: roomIdSchema, name: nameSchema, sessionId: sessionIdSchema });
+export const roomLeaveSchema = z.object({ roomId: roomIdSchema });
 export const chatSendSchema = z.object({ roomId: roomIdSchema, text: z.string().trim().min(1).max(500) });
+export const screenStateSchema = z.object({ roomId: roomIdSchema });
+export const microphoneStateSchema = z.object({ roomId: roomIdSchema, muted: z.boolean() });
 
 export const sdpSchema = z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().min(1) });
 export const offerSchema = z.object({ roomId: roomIdSchema, targetId: z.string().min(1), sdp: sdpSchema });

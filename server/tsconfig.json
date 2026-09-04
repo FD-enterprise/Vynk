@@ -8,10 +8,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "..",
     "types": ["node"],
     "resolveJsonModule": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../shared/events.ts"],
   "exclude": ["node_modules", "dist"]
 }

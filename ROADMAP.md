@@ -378,7 +378,7 @@ Próxima fase requer autorização explícita: **FASE 6 — Eventos compartilhad
 
 # FASE 6 — Eventos compartilhados
 
-**Status:** `NÃO INICIADA`
+**Status:** `CONCLUÍDA`
 
 ## Objetivo
 
@@ -407,11 +407,20 @@ chat:message
 
 ## Tarefas
 
-* [ ] Centralizar nomes
-* [ ] Criar tipos TypeScript
-* [ ] Validar payloads
-* [ ] Não espalhar strings arbitrárias pelo projeto
-* [ ] Validar participação antes de encaminhar eventos
+* [x] Centralizar nomes — `shared/events.ts:1`, reexportado em `src/lib/events.ts:1` e `server/src/events.ts:1`
+* [x] Criar tipos TypeScript — payloads de sala, peers, tela, microfone, presença e chat em `shared/events.ts:20`
+* [x] Validar payloads — schemas Zod em `server/src/validation.ts:1` para sala, saída, tela, microfone, chat e signaling
+* [x] Não espalhar strings arbitrárias pelo projeto — frontend e backend importam `EVENTS`
+* [x] Validar participação antes de encaminhar eventos — sala + `socket.id` verificados em signaling, chat, tela e microfone (`server/src/index.ts:95`)
+
+## Validação
+
+* `server`: `npm run typecheck` e `npm run build` passaram; runtime ESM validado com `npm start`
+* `client`: `npm run lint`, `npx tsc --noEmit` e `npm run build` passaram
+* Teste de contrato: membro recebeu `microphone:state`; payload de sala inválido foi ignorado
+* Teste de segurança: signaling de socket fora da sala não foi encaminhado
+
+Próxima fase requer autorização explícita: **FASE 7 — Signaling WebRTC**.
 
 ---
 
