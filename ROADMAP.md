@@ -530,7 +530,7 @@ PC A ←════════ WebRTC ════════→ PC B
 
 # FASE 9 — Compartilhamento de tela
 
-**Status:** `EM ANDAMENTO`
+**Status:** `CONCLUÍDA`
 
 ## API
 
@@ -555,8 +555,8 @@ navigator.mediaDevices.getDisplayMedia({
 
 ## Validação pendente
 
-* [ ] Host autoriza captura em navegador real
-* [ ] Preview local aparece
+* [x] Host autoriza captura em navegador real — confirmado pelo usuário
+* [x] Preview local aparece — confirmado pelo usuário
 * [ ] Participante remoto recebe a tela — validação final fica na Fase 10
 
 Próxima fase requer autorização explícita: **FASE 10 — Recepção da tela**.
@@ -565,15 +565,24 @@ Próxima fase requer autorização explícita: **FASE 10 — Recepção da tela*
 
 # FASE 10 — Recepção da tela
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Tarefas
 
-* [ ] Receber track de vídeo
-* [ ] Criar stream remoto
-* [ ] Renderizar stream
-* [ ] Receber áudio quando disponível
-* [ ] Limpar stream ao terminar
+* [x] Receber track de vídeo — `ontrack` em `src/hooks/useWebRTCSignaling.ts:42`
+* [x] Criar stream remoto — `remoteStreams` por `peerId` (`src/hooks/useWebRTCSignaling.ts:43`)
+* [x] Renderizar stream — `<video srcObject>` para host/participante (`src/app/room/[code]/page.tsx:125`)
+* [x] Receber áudio quando disponível — áudio da mesma `MediaStream` com `muted={false}` no participante
+* [x] Limpar stream ao terminar — `screen:stopped` e remoção do peer limpam streams (`src/app/room/[code]/page.tsx:37`, `src/hooks/useWebRTCSignaling.ts:166`)
+
+## Validação pendente
+
+* [ ] Host compartilha tela em um navegador
+* [ ] Participante remoto vê a tela em outro navegador
+* [ ] Áudio remoto é reproduzido quando disponibilizado pelo navegador/OS
+* [ ] Encerrar compartilhamento remove a tela remota sem imagem congelada
+
+Próxima fase requer autorização explícita: **FASE 11 — Parar compartilhamento**.
 
 ## PRIMEIRO GRANDE MARCO
 

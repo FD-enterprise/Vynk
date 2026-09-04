@@ -16,6 +16,7 @@ export default function RoomPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -35,11 +36,13 @@ export default function RoomPage() {
     const onParticipants = (data: { participants: Participant[] }) => { setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
     const onHostChanged = (data: { hostId: string }) => { setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId }))); setIsHost(data.hostId === socket.id); };
     const onError = (data: { message: string }) => setError(data.message);
+    const onScreenStopped = () => setRemoteStreams(new Map());
     socket.on(EVENTS.ROOM_JOINED, onJoined);
     socket.on(EVENTS.ROOM_PARTICIPANTS, onParticipants);
     socket.on(EVENTS.PRESENCE_UPDATE, onParticipants);
     socket.on(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
     socket.on(EVENTS.ROOM_ERROR, onError);
+    socket.on(EVENTS.SCREEN_STOPPED, onScreenStopped);
     const emitJoin = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() });
     if (socket.connected) emitJoin(); else socket.once("connect", emitJoin);
     return () => {
@@ -48,6 +51,7 @@ export default function RoomPage() {
       socket.off(EVENTS.PRESENCE_UPDATE, onParticipants);
       socket.off(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
       socket.off(EVENTS.ROOM_ERROR, onError);
+      socket.off(EVENTS.SCREEN_STOPPED, onScreenStopped);
     };
   }, [socket, roomId, name, promptName, needsName]);
 
@@ -64,6 +68,21 @@ export default function RoomPage() {
   }, [roomId, socket]);
   const screen = useScreenShare(handleNativeScreenStop);
 
+  const handleRemoteStream = useCallback((peerId: string, stream: MediaStream) => {
+    setRemoteStreams((current) => {
+      const next = new Map(current);
+      next.set(peerId, stream);
+      return next;
+    });
+  }, []);
+  const handleRemotePeerRemoved = useCallback((peerId: string) => {
+    setRemoteStreams((current) => {
+      const next = new Map(current);
+      next.delete(peerId);
+      return next;
+    });
+  }, []);
+
   const { states: peerStates, iceStates } = useWebRTCSignaling({
     socket,
     roomId,
@@ -71,11 +90,15 @@ export default function RoomPage() {
     isHost,
     peers: participants.filter((participant) => participant.presence === "online"),
     localScreenStream: screen.stream,
+    onRemoteStream: handleRemoteStream,
+    onRemotePeerRemoved: handleRemotePeerRemoved,
   });
 
+  const remoteScreenStream = [...remoteStreams.values()].find((stream) => stream.getVideoTracks().length > 0) ?? null;
+  const displayStream = isHost ? screen.stream : remoteScreenStream;
   useEffect(() => {
-    if (videoRef.current) videoRef.current.srcObject = screen.stream;
-  }, [screen.stream]);
+    if (videoRef.current) videoRef.current.srcObject = displayStream;
+  }, [displayStream]);
 
   const handleLeave = () => { socket?.emit(EVENTS.ROOM_LEAVE, { roomId }); router.push("/"); };
   const handleCopy = async () => { await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`); };
@@ -122,8 +145,8 @@ export default function RoomPage() {
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         <div className="flex-1 flex flex-col p-3 sm:p-4 gap-3 min-h-[40vh] lg:min-h-0">
           <div className="flex-1 relative bg-black rounded-xl overflow-hidden flex items-center justify-center min-h-[240px]">
-            {screen.stream && <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-contain" />}
-            {!screen.stream && <div className="text-zinc-400 text-center p-6">
+            {displayStream && <video ref={videoRef} autoPlay muted={isHost} playsInline className="w-full h-full object-contain" />}
+            {!displayStream && <div className="text-zinc-400 text-center p-6">
               <div className="text-4xl mb-3">🖥️</div>
               <p className="text-sm">{isHost ? "Você é o host — compartilhe sua tela quando quiser." : "Aguardando host compartilhar a tela…"}</p>
               <p className="text-xs text-zinc-500 mt-2">Fase 9: captura local via WebRTC, sem mídia no backend.</p>

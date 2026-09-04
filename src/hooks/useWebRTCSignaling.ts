@@ -16,16 +16,19 @@ type Props = {
   isHost: boolean;
   peers: Peer[];
   localScreenStream: MediaStream | null;
+  onRemoteStream: (peerId: string, stream: MediaStream) => void;
+  onRemotePeerRemoved: (peerId: string) => void;
 };
 
 const RTC_CONFIGURATION: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream }: Props) {
+export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, onRemoteStream, onRemotePeerRemoved }: Props) {
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const previousScreenStream = useRef<MediaStream | null>(null);
+  const remoteStreams = useRef<Map<string, MediaStream>>(new Map());
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
 
@@ -39,6 +42,15 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
 
     const connection = new RTCPeerConnection(RTC_CONFIGURATION);
     localScreenStream?.getTracks().forEach((track) => connection.addTrack(track, localScreenStream));
+    connection.ontrack = (event) => {
+      const incoming = remoteStreams.current.get(peerId) ?? new MediaStream();
+      const tracks = event.streams[0]?.getTracks() ?? [event.track];
+      tracks.forEach((track) => {
+        if (!incoming.getTracks().some((existing) => existing.id === track.id)) incoming.addTrack(track);
+      });
+      remoteStreams.current.set(peerId, incoming);
+      onRemoteStream(peerId, incoming);
+    };
     connection.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit(EVENTS.WEBRTC_ICE_CANDIDATE, {
@@ -65,7 +77,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     connections.current.set(peerId, connection);
     setPeerState(peerId, "new");
     return connection;
-  }, [localScreenStream, roomId, setPeerState, socket]);
+  }, [localScreenStream, onRemoteStream, roomId, setPeerState, socket]);
 
   const flushCandidates = useCallback(async (peerId: string, connection: RTCPeerConnection) => {
     const pending = pendingCandidates.current.get(peerId) ?? [];
@@ -189,6 +201,8 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       connection.close();
       connections.current.delete(peerId);
       pendingCandidates.current.delete(peerId);
+      remoteStreams.current.delete(peerId);
+      onRemotePeerRemoved(peerId);
       setStates((current) => {
         const next = { ...current };
         delete next[peerId];
@@ -200,12 +214,13 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         return next;
       });
     });
-  }, [peers, selfId]);
+  }, [onRemotePeerRemoved, peers, selfId]);
 
   useEffect(() => () => {
     connections.current.forEach((connection) => connection.close());
     connections.current.clear();
     pendingCandidates.current.clear();
+    remoteStreams.current.clear();
   }, []);
 
   return { states, iceStates };
