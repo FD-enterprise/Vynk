@@ -15,15 +15,17 @@ type Props = {
   selfId: string;
   isHost: boolean;
   peers: Peer[];
+  localScreenStream: MediaStream | null;
 };
 
 const RTC_CONFIGURATION: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Props) {
+export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream }: Props) {
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const previousScreenStream = useRef<MediaStream | null>(null);
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
 
@@ -36,6 +38,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
     if (existing) return existing;
 
     const connection = new RTCPeerConnection(RTC_CONFIGURATION);
+    localScreenStream?.getTracks().forEach((track) => connection.addTrack(track, localScreenStream));
     connection.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit(EVENTS.WEBRTC_ICE_CANDIDATE, {
@@ -62,7 +65,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
     connections.current.set(peerId, connection);
     setPeerState(peerId, "new");
     return connection;
-  }, [roomId, setPeerState, socket]);
+  }, [localScreenStream, roomId, setPeerState, socket]);
 
   const flushCandidates = useCallback(async (peerId: string, connection: RTCPeerConnection) => {
     const pending = pendingCandidates.current.get(peerId) ?? [];
@@ -87,6 +90,31 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
       setPeerState(peerId, "failed");
     }
   }, [createPeer, roomId, setPeerState, socket]);
+
+  const renegotiateScreen = useCallback(async (peerId: string) => {
+    if (!socket || !roomId) return;
+    const connection = createPeer(peerId);
+    const desiredTracks = localScreenStream?.getTracks() ?? [];
+    const desiredKinds = new Set(desiredTracks.map((track) => track.kind));
+    for (const sender of connection.getSenders()) {
+      if (sender.track && (sender.track.kind === "video" || sender.track.kind === "audio") && !desiredKinds.has(sender.track.kind)) {
+        connection.removeTrack(sender);
+      }
+    }
+    for (const track of desiredTracks) {
+      const sender = connection.getSenders().find((candidate) => candidate.track?.kind === track.kind);
+      if (sender) await sender.replaceTrack(track);
+      else connection.addTrack(track, localScreenStream!);
+    }
+    try {
+      setPeerState(peerId, "connecting");
+      const offer = await connection.createOffer();
+      await connection.setLocalDescription(offer);
+      socket.emit(EVENTS.WEBRTC_OFFER, { roomId, targetId: peerId, sdp: offer });
+    } catch {
+      setPeerState(peerId, "failed");
+    }
+  }, [createPeer, localScreenStream, roomId, setPeerState, socket]);
 
   useEffect(() => {
     if (!socket || !roomId || !selfId) return;
@@ -142,10 +170,17 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
 
   useEffect(() => {
     if (!isHost || !socket || !selfId) return;
+    const screenChanged = previousScreenStream.current !== localScreenStream;
+    previousScreenStream.current = localScreenStream;
+    if (screenChanged) {
+      for (const peer of peers) {
+        if (peer.id !== selfId && connections.current.has(peer.id)) void renegotiateScreen(peer.id);
+      }
+    }
     for (const peer of peers) {
       if (peer.id !== selfId && !connections.current.has(peer.id)) void createOffer(peer.id);
     }
-  }, [createOffer, isHost, peers, selfId, socket]);
+  }, [createOffer, isHost, localScreenStream, peers, renegotiateScreen, selfId, socket]);
 
   useEffect(() => {
     const activeIds = new Set(peers.map((peer) => peer.id));

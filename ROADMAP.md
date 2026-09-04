@@ -530,7 +530,7 @@ PC A ←════════ WebRTC ════════→ PC B
 
 # FASE 9 — Compartilhamento de tela
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## API
 
@@ -543,15 +543,23 @@ navigator.mediaDevices.getDisplayMedia({
 
 ## Tarefas
 
-* [ ] Criar botão compartilhar
-* [ ] Solicitar permissão
-* [ ] Capturar tela
-* [ ] Separar vídeo
-* [ ] Detectar áudio quando disponível
-* [ ] Adicionar tracks
-* [ ] Mostrar preview local
-* [ ] Tratar permissão negada
-* [ ] Funcionar sem áudio da tela
+* [x] Criar botão compartilhar — somente host (`src/app/room/[code]/page.tsx:135`)
+* [x] Solicitar permissão — ação explícita chama `getDisplayMedia`
+* [x] Capturar tela — `src/hooks/useScreenShare.ts:17`
+* [x] Separar vídeo — `getVideoTracks()` e `getAudioTracks()` mantidos no `MediaStream`
+* [x] Detectar áudio quando disponível — áudio é opcional e não bloqueia a captura de vídeo
+* [x] Adicionar tracks — `RTCPeerConnection.addTrack` e renegociação (`src/hooks/useWebRTCSignaling.ts:38`)
+* [x] Mostrar preview local — `<video>` com `srcObject` (`src/app/room/[code]/page.tsx:125`)
+* [x] Tratar permissão negada — mensagem amigável `Permissão para compartilhar a tela foi negada.`
+* [x] Funcionar sem áudio da tela — somente o track de vídeo é obrigatório
+
+## Validação pendente
+
+* [ ] Host autoriza captura em navegador real
+* [ ] Preview local aparece
+* [ ] Participante remoto recebe a tela — validação final fica na Fase 10
+
+Próxima fase requer autorização explícita: **FASE 10 — Recepção da tela**.
 
 ---
 

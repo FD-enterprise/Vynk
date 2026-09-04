@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EVENTS, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
 import { getParticipantSessionId } from "@/lib/socket";
 import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
+import { useScreenShare } from "@/hooks/useScreenShare";
 
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
@@ -17,6 +18,7 @@ export default function RoomPage() {
   const [error, setError] = useState<string | null>(null);
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!name) {
@@ -57,16 +59,36 @@ export default function RoomPage() {
     return () => { socket.off("reconnect" as never, onReconnect); socket.io.off("reconnect", onReconnect); };
   }, [socket, roomId, promptName, name]);
 
+  const handleNativeScreenStop = useCallback(() => {
+    socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
+  }, [roomId, socket]);
+  const screen = useScreenShare(handleNativeScreenStop);
+
   const { states: peerStates, iceStates } = useWebRTCSignaling({
     socket,
     roomId,
     selfId: socket?.id ?? "",
     isHost,
     peers: participants.filter((participant) => participant.presence === "online"),
+    localScreenStream: screen.stream,
   });
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = screen.stream;
+  }, [screen.stream]);
 
   const handleLeave = () => { socket?.emit(EVENTS.ROOM_LEAVE, { roomId }); router.push("/"); };
   const handleCopy = async () => { await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`); };
+  const handleShare = async () => {
+    if (!isHost) return;
+    if (screen.state === "sharing") {
+      screen.stop();
+      socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
+      return;
+    }
+    const stream = await screen.start();
+    if (stream) socket?.emit(EVENTS.SCREEN_STARTED, { roomId });
+  };
   const myId = socket?.id ?? "";
 
   if (needsName) {
@@ -100,15 +122,18 @@ export default function RoomPage() {
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         <div className="flex-1 flex flex-col p-3 sm:p-4 gap-3 min-h-[40vh] lg:min-h-0">
           <div className="flex-1 relative bg-black rounded-xl overflow-hidden flex items-center justify-center min-h-[240px]">
-            <div className="text-zinc-400 text-center p-6">
+            {screen.stream && <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-contain" />}
+            {!screen.stream && <div className="text-zinc-400 text-center p-6">
               <div className="text-4xl mb-3">🖥️</div>
-              <p className="text-sm">{isHost ? "Você é o host — Fase 5 de presença concluída." : "Aguardando host — sala criada com sucesso."}</p>
-              <p className="text-xs text-zinc-500 mt-2">Fase 4: criação de salas validada via {process.env.NEXT_PUBLIC_SIGNALING_URL}</p>
-            </div>
+              <p className="text-sm">{isHost ? "Você é o host — compartilhe sua tela quando quiser." : "Aguardando host compartilhar a tela…"}</p>
+              <p className="text-xs text-zinc-500 mt-2">Fase 9: captura local via WebRTC, sem mídia no backend.</p>
+              {screen.error && <p className="text-xs text-red-400 mt-2">{screen.error}</p>}
+            </div>}
             {isHost && <div className="absolute top-3 left-3 bg-violet-600 text-white text-xs px-2 py-1 rounded-full">HOST</div>}
           </div>
           <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
-            <span>Fase 7 — signaling WebRTC:</span>
+            {isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className={`rounded-full px-4 py-2 text-sm font-medium text-white ${screen.state === "sharing" ? "bg-red-600" : "bg-violet-600"} disabled:opacity-50`}>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "⏹ Parar tela" : "🖥 Compartilhar tela"}</button>}
+            <span>Fase 9 — tela local:</span>
             {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state} / ICE ${iceStates[peerId] ?? "new"}`).join(" · ")}
           </div>
         </div>
