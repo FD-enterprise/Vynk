@@ -711,7 +711,7 @@ Se o navegador bloquear a reprodução automática, a sala exibe `Liberar áudio
 
 # FASE 14 — Mute / Unmute
 
-**Status:** `EM ANDAMENTO`
+**Status:** `CONCLUÍDA`
 
 ## Tarefas
 
@@ -722,12 +722,12 @@ Se o navegador bloquear a reprodução automática, a sala exibe `Liberar áudio
 * [x] Sincronizar via WebSocket — evento `microphone:state` atualiza a sala
 * [x] Recuperar estado após reconexão — o estado atual é reenviado ao reentrar
 
-## Validação pendente
+## Validação no deploy
 
-* [ ] Mutar em um navegador e confirmar silêncio no outro
-* [ ] Desmutar e confirmar retorno da voz sem recarregar a sala
-* [ ] Confirmar atualização do indicador remoto
-* [ ] Confirmar preservação do estado após reconexão
+* [x] Mutar em um navegador e confirmar silêncio no outro
+* [x] Desmutar e confirmar retorno da voz sem recarregar a sala
+* [x] Confirmar atualização do indicador remoto
+* [x] Confirmar preservação do estado após reconexão
 
 ---
 
