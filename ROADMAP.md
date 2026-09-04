@@ -485,7 +485,7 @@ WebRTC conectado
 
 # FASE 8 — Primeira conexão P2P
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Objetivo
 
@@ -493,15 +493,32 @@ Conectar somente dois participantes.
 
 ## Tarefas
 
-* [ ] PC A cria sala
-* [ ] PC B entra
-* [ ] Criar conexão
-* [ ] Confirmar ICE
-* [ ] Confirmar `connected`
-* [ ] Tratar `connecting`
-* [ ] Tratar `disconnected`
-* [ ] Tratar `failed`
-* [ ] Fechar conexão ao sair
+* [x] PC A cria sala — Fase 4
+* [x] PC B entra — Fase 4
+* [x] Criar conexão — `src/hooks/useWebRTCSignaling.ts:37`, uma conexão por peer
+* [ ] Confirmar ICE — UI exibe estado em `/room/[code]`, falta teste com dois navegadores
+* [ ] Confirmar `connected` — data channel de controle implementado, falta teste com dois navegadores
+* [x] Tratar `connecting` — `src/hooks/useWebRTCSignaling.ts:50`
+* [x] Tratar `disconnected` — `src/hooks/useWebRTCSignaling.ts:55`
+* [x] Tratar `failed` — ICE e operações SDP atualizam o estado
+* [x] Fechar conexão ao sair — cleanup do hook em `src/hooks/useWebRTCSignaling.ts:173`
+
+## Implementação
+
+* Host cria um data channel de controle apenas para produzir o SDP da primeira negociação; nenhuma mídia é enviada nesta fase
+* Signaling encaminha offer/answer/ICE pelo Render, sem transportar áudio ou vídeo
+* A sala mostra `connectionState / ICE state` por peer para validação manual
+
+## Validação pendente
+
+Abrir `https://vynk-dun.vercel.app` em dois navegadores, criar/entrar na mesma sala e confirmar em ambos:
+
+```text
+connection: connected
+ICE: connected ou completed
+```
+
+Depois desconectar um cliente e confirmar `disconnected`/cleanup. Não avançar para a Fase 9 antes dessa confirmação.
 
 ## Marco
 

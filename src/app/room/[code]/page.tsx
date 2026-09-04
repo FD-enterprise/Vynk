@@ -57,7 +57,7 @@ export default function RoomPage() {
     return () => { socket.off("reconnect" as never, onReconnect); socket.io.off("reconnect", onReconnect); };
   }, [socket, roomId, promptName, name]);
 
-  const { states: peerStates } = useWebRTCSignaling({
+  const { states: peerStates, iceStates } = useWebRTCSignaling({
     socket,
     roomId,
     selfId: socket?.id ?? "",
@@ -109,7 +109,7 @@ export default function RoomPage() {
           </div>
           <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
             <span>Fase 7 — signaling WebRTC:</span>
-            {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state}`).join(" · ")}
+            {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state} / ICE ${iceStates[peerId] ?? "new"}`).join(" · ")}
           </div>
         </div>
         <aside className="w-full lg:w-[360px] flex flex-col border-t lg:border-t-0 lg:border-l bg-white dark:bg-zinc-900 dark:border-zinc-800">

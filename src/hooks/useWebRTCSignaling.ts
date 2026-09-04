@@ -25,6 +25,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
+  const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
 
   const setPeerState = useCallback((peerId: string, state: PeerConnectionState) => {
     setStates((current) => current[peerId] === state ? current : { ...current, [peerId]: state });
@@ -48,7 +49,12 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
       setPeerState(peerId, connection.connectionState as PeerConnectionState);
     };
     connection.oniceconnectionstatechange = () => {
-      if (connection.iceConnectionState === "failed") setPeerState(peerId, "failed");
+      const state = connection.iceConnectionState;
+      setIceStates((current) => current[peerId] === state ? current : { ...current, [peerId]: state });
+      if (state === "checking") setPeerState(peerId, "connecting");
+      if (state === "connected" || state === "completed") setPeerState(peerId, "connected");
+      if (state === "disconnected") setPeerState(peerId, "disconnected");
+      if (state === "failed") setPeerState(peerId, "failed");
     };
     connection.ondatachannel = (event) => {
       event.channel.onopen = () => setPeerState(peerId, "connected");
@@ -70,7 +76,8 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
     if (!socket || !roomId) return;
     const connection = createPeer(peerId);
     // A data channel gives the initial SDP a negotiated section without carrying media.
-    connection.createDataChannel("vynk-control");
+    const controlChannel = connection.createDataChannel("vynk-control");
+    controlChannel.onopen = () => setPeerState(peerId, "connected");
     try {
       setPeerState(peerId, "connecting");
       const offer = await connection.createOffer();
@@ -152,6 +159,11 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
         delete next[peerId];
         return next;
       });
+      setIceStates((current) => {
+        const next = { ...current };
+        delete next[peerId];
+        return next;
+      });
     });
   }, [peers, selfId]);
 
@@ -161,5 +173,5 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers }: Pr
     pendingCandidates.current.clear();
   }, []);
 
-  return { states };
+  return { states, iceStates };
 }
