@@ -642,7 +642,7 @@ Próxima fase requer autorização explícita: **FASE 12 — Microfone**.
 
 # FASE 12 — Microfone
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## API
 
@@ -654,13 +654,21 @@ navigator.mediaDevices.getUserMedia({
 
 ## Tarefas
 
-* [ ] Solicitar microfone
-* [ ] Capturar track
-* [ ] Adicionar ao peer
-* [ ] Mostrar estado
-* [ ] Tratar permissão negada
-* [ ] Tratar dispositivo inexistente
-* [ ] Parar track no cleanup
+* [x] Solicitar microfone — ação explícita em `useMicrophone`, nunca automática ao entrar
+* [x] Capturar track — `getUserMedia({ audio: true })` mantém stream e faixa ativos
+* [x] Adicionar ao peer — transceiver de áudio dedicado, separado do áudio da tela
+* [x] Mostrar estado — controle exibe solicitando, ativo e erro
+* [x] Tratar permissão negada — mensagem orienta liberar o acesso e tentar novamente
+* [x] Tratar dispositivo inexistente — mensagem orienta conectar um microfone
+* [x] Parar track no cleanup — captura ativa e solicitação pendente são encerradas/invalidadas no unmount
+
+## Validação pendente
+
+* [ ] Autorizar o microfone em um navegador real e confirmar `Microfone ativo`
+* [ ] Confirmar no segundo participante que o estado `micMuted: false` é recebido
+* [ ] Sair da sala e confirmar que o indicador de captura do navegador é encerrado
+
+A reprodução e validação de voz entre os participantes pertencem à **FASE 13 — Voz bidirecional**.
 
 ---
 

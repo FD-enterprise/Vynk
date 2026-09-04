@@ -6,6 +6,7 @@ import { useSocket } from "@/hooks/useSocket";
 import { getParticipantSessionId } from "@/lib/socket";
 import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
 import { useScreenShare } from "@/hooks/useScreenShare";
+import { useMicrophone } from "@/hooks/useMicrophone";
 
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
@@ -21,6 +22,20 @@ export default function RoomPage() {
   const [needsName, setNeedsName] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const handleScreenStopped = useCallback(() => {
+    socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
+  }, [roomId, socket]);
+  const screen = useScreenShare(handleScreenStopped);
+  const handleMicrophoneState = useCallback((muted: boolean) => {
+    socket?.emit(EVENTS.MICROPHONE_STATE, { roomId, muted });
+  }, [roomId, socket]);
+  const microphone = useMicrophone(handleMicrophoneState);
+  const microphoneStateRef = useRef(microphone.state);
+
+  useEffect(() => {
+    microphoneStateRef.current = microphone.state;
+  }, [microphone.state]);
+
   useEffect(() => {
     if (!name) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -32,7 +47,12 @@ export default function RoomPage() {
     if (!socket || !roomId || needsName) return;
     const effectiveName = (name || promptName).trim();
     if (!effectiveName) return;
-    const onJoined = (data: { participants: Participant[] }) => { setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
+    const onJoined = (data: { participants: Participant[] }) => {
+      setParticipants(data.participants);
+      const me = data.participants.find((p) => p.id === socket.id);
+      setIsHost(!!me?.isHost);
+      socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted: microphoneStateRef.current !== "active" });
+    };
     const onParticipants = (data: { participants: Participant[] }) => { setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
     const onHostChanged = (data: { hostId: string }) => { setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId }))); setIsHost(data.hostId === socket.id); };
     const onError = (data: { message: string }) => setError(data.message);
@@ -63,11 +83,6 @@ export default function RoomPage() {
     return () => { socket.off("reconnect" as never, onReconnect); socket.io.off("reconnect", onReconnect); };
   }, [socket, roomId, promptName, name]);
 
-  const handleScreenStopped = useCallback(() => {
-    socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
-  }, [roomId, socket]);
-  const screen = useScreenShare(handleScreenStopped);
-
   const handleRemoteStream = useCallback((peerId: string, stream: MediaStream) => {
     setRemoteStreams((current) => {
       const next = new Map(current);
@@ -90,6 +105,7 @@ export default function RoomPage() {
     isHost,
     peers: participants.filter((participant) => participant.presence === "online"),
     localScreenStream: screen.stream,
+    localMicrophoneStream: microphone.stream,
     onRemoteStream: handleRemoteStream,
     onRemotePeerRemoved: handleRemotePeerRemoved,
   });
@@ -110,6 +126,10 @@ export default function RoomPage() {
     }
     const stream = await screen.start();
     if (stream) socket?.emit(EVENTS.SCREEN_STARTED, { roomId });
+  };
+  const handleMicrophone = async () => {
+    if (microphone.state === "active" || microphone.state === "requesting-permission") return;
+    await microphone.start();
   };
   const myId = socket?.id ?? "";
 
@@ -153,10 +173,12 @@ export default function RoomPage() {
             </div>}
             {isHost && <div className="absolute top-3 left-3 bg-violet-600 text-white text-xs px-2 py-1 rounded-full">HOST</div>}
           </div>
-          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
+          <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
             {isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className={`rounded-full px-4 py-2 text-sm font-medium text-white ${screen.state === "sharing" ? "bg-red-600" : "bg-violet-600"} disabled:opacity-50`}>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "⏹ Parar tela" : "🖥 Compartilhar tela"}</button>}
+            {microphone.state === "active" ? <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-medium text-green-700 dark:bg-green-950/40 dark:text-green-300" role="status">🎙 Microfone ativo</span> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800">{microphone.state === "requesting-permission" ? "Solicitando microfone…" : microphone.state === "error" ? "Tentar microfone novamente" : "🎙 Ativar microfone"}</button>}
             <span>{screen.state === "sharing" ? "Sua tela está sendo compartilhada." : "Conexão:"}</span>
             {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state} / ICE ${iceStates[peerId] ?? "new"}`).join(" · ")}
+            {microphone.error && <span className="basis-full text-red-600 dark:text-red-400" role="alert">{microphone.error}</span>}
           </div>
           {isHost && <p className="px-2 text-center text-[11px] text-zinc-500">Para trocar de aba durante a transmissão, selecione <strong>Tela inteira</strong> no seletor do navegador e habilite o áudio do sistema quando disponível. Ao escolher uma única aba, o navegador fixa a captura nela.</p>}
         </div>

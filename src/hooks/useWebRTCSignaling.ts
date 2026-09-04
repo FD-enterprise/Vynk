@@ -16,6 +16,7 @@ type Props = {
   isHost: boolean;
   peers: Peer[];
   localScreenStream: MediaStream | null;
+  localMicrophoneStream: MediaStream | null;
   onRemoteStream: (peerId: string, stream: MediaStream) => void;
   onRemotePeerRemoved: (peerId: string) => void;
 };
@@ -24,10 +25,11 @@ const RTC_CONFIGURATION: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, onRemoteStream, onRemotePeerRemoved }: Props) {
+export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, localMicrophoneStream, onRemoteStream, onRemotePeerRemoved }: Props) {
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const previousScreenStream = useRef<MediaStream | null>(null);
+  const microphoneTransceivers = useRef<Map<string, RTCRtpTransceiver>>(new Map());
   const remoteStreams = useRef<Map<string, MediaStream>>(new Map());
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
@@ -44,8 +46,22 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     if (isHost) {
       connection.addTransceiver("video", { direction: "sendonly" });
       connection.addTransceiver("audio", { direction: "sendonly" });
+      const microphoneTransceiver = connection.addTransceiver("audio", { direction: "sendrecv" });
+      microphoneTransceivers.current.set(peerId, microphoneTransceiver);
     }
     connection.ontrack = (event) => {
+      if (event.track.kind === "audio") {
+        let microphoneTransceiver = microphoneTransceivers.current.get(peerId);
+        if (!microphoneTransceiver) {
+          const audioTransceivers = connection.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === "audio");
+          if (audioTransceivers.length >= 2) {
+            microphoneTransceiver = audioTransceivers.at(-1);
+            if (microphoneTransceiver) microphoneTransceivers.current.set(peerId, microphoneTransceiver);
+          }
+        }
+        // Remote microphone playback is introduced separately in Phase 13.
+        if (event.transceiver === microphoneTransceiver) return;
+      }
       const incoming = remoteStreams.current.get(peerId) ?? new MediaStream();
       const tracks = event.streams[0]?.getTracks() ?? [event.track];
       tracks.forEach((track) => {
@@ -103,6 +119,9 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         const transceiver = connection.getTransceivers().find((candidate) => candidate.receiver.track.kind === track.kind);
         if (transceiver) await transceiver.sender.replaceTrack(track);
       }
+      const microphoneTrack = localMicrophoneStream?.getAudioTracks()[0] ?? null;
+      const microphoneTransceiver = microphoneTransceivers.current.get(peerId);
+      if (microphoneTransceiver) await microphoneTransceiver.sender.replaceTrack(microphoneTrack);
       setPeerState(peerId, "connecting");
       const offer = await connection.createOffer();
       await connection.setLocalDescription(offer);
@@ -110,13 +129,14 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     } catch {
       setPeerState(peerId, "failed");
     }
-  }, [createPeer, localScreenStream, roomId, setPeerState, socket]);
+  }, [createPeer, localMicrophoneStream, localScreenStream, roomId, setPeerState, socket]);
 
   const renegotiateScreen = useCallback(async (peerId: string) => {
     const connection = createPeer(peerId);
     const desiredTracks = localScreenStream?.getTracks() ?? [];
     const desiredByKind = new Map(desiredTracks.map((track) => [track.kind, track]));
     for (const transceiver of connection.getTransceivers()) {
+      if (transceiver === microphoneTransceivers.current.get(peerId)) continue;
       const kind = transceiver.receiver.track.kind;
       if (kind === "video" || kind === "audio") {
         try { await transceiver.sender.replaceTrack(desiredByKind.get(kind) ?? null); } catch { setPeerState(peerId, "failed"); }
@@ -139,6 +159,13 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       const connection = createPeer(data.fromId);
       try {
         await connection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const audioTransceivers = connection.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === "audio");
+        const microphoneTransceiver = audioTransceivers.length >= 2 ? audioTransceivers.at(-1) : undefined;
+        if (microphoneTransceiver) {
+          microphoneTransceiver.direction = "sendrecv";
+          microphoneTransceivers.current.set(data.fromId, microphoneTransceiver);
+          await microphoneTransceiver.sender.replaceTrack(localMicrophoneStream?.getAudioTracks()[0] ?? null);
+        }
         await flushCandidates(data.fromId, connection);
         const answer = await connection.createAnswer();
         await connection.setLocalDescription(answer);
@@ -181,7 +208,14 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       socket.off(EVENTS.WEBRTC_ANSWER, onAnswer);
       socket.off(EVENTS.WEBRTC_ICE_CANDIDATE, onCandidate);
     };
-  }, [createPeer, flushCandidates, roomId, selfId, setPeerState, socket]);
+  }, [createPeer, flushCandidates, localMicrophoneStream, roomId, selfId, setPeerState, socket]);
+
+  useEffect(() => {
+    const microphoneTrack = localMicrophoneStream?.getAudioTracks()[0] ?? null;
+    microphoneTransceivers.current.forEach((transceiver, peerId) => {
+      void transceiver.sender.replaceTrack(microphoneTrack).catch(() => setPeerState(peerId, "failed"));
+    });
+  }, [localMicrophoneStream, setPeerState]);
 
   useEffect(() => {
     if (!isHost || !socket || !selfId) return;
@@ -204,6 +238,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       connection.close();
       connections.current.delete(peerId);
       pendingCandidates.current.delete(peerId);
+      microphoneTransceivers.current.delete(peerId);
       remoteStreams.current.delete(peerId);
       onRemotePeerRemoved(peerId);
       setStates((current) => {
@@ -223,6 +258,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     connections.current.forEach((connection) => connection.close());
     connections.current.clear();
     pendingCandidates.current.clear();
+    microphoneTransceivers.current.clear();
     remoteStreams.current.clear();
   }, []);
 
