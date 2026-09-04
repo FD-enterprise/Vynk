@@ -1,9 +1,13 @@
+export type PresenceState = "online" | "reconnecting" | "offline";
+
 export type Participant = {
   id: string;
+  sessionId: string;
   name: string;
   isHost: boolean;
   joinedAt: number;
   micMuted: boolean;
+  presence: PresenceState;
 };
 
 export type Room = {
@@ -12,6 +16,7 @@ export type Room = {
   participants: Map<string, Participant>;
   createdAt: number;
   screenSharing: boolean;
+  presenceTimers: Map<string, NodeJS.Timeout>;
 };
 
 export type ChatMessage = {

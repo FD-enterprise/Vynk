@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSignalingSocket } from "@/lib/socket";
+import { getParticipantSessionId, getSignalingSocket } from "@/lib/socket";
 import { EVENTS } from "@/lib/events";
 
 export default function Home() {
@@ -22,7 +22,7 @@ export default function Home() {
     const cleanup = () => { socket.off(EVENTS.ROOM_CREATED, onCreated); socket.off(EVENTS.ROOM_ERROR, onError); };
     socket.on(EVENTS.ROOM_CREATED, onCreated);
     socket.on(EVENTS.ROOM_ERROR, onError);
-    const emit = () => socket.emit(EVENTS.ROOM_CREATE, { name: name.trim() });
+    const emit = () => socket.emit(EVENTS.ROOM_CREATE, { name: name.trim(), sessionId: getParticipantSessionId() });
     if (socket.connected) emit(); else socket.once("connect", emit);
     setTimeout(() => setLoading((v) => (v === "create" ? null : v)), 8000);
   };
@@ -38,7 +38,7 @@ export default function Home() {
     const cleanup = () => { socket.off(EVENTS.ROOM_JOINED, onJoined); socket.off(EVENTS.ROOM_ERROR, onError); };
     socket.on(EVENTS.ROOM_JOINED, onJoined);
     socket.on(EVENTS.ROOM_ERROR, onError);
-    const emit = () => socket.emit(EVENTS.ROOM_JOIN, { roomId: upper, name: name.trim() });
+    const emit = () => socket.emit(EVENTS.ROOM_JOIN, { roomId: upper, name: name.trim(), sessionId: getParticipantSessionId() });
     if (socket.connected) emit(); else socket.once("connect", emit);
     setTimeout(() => setLoading((v) => (v === "join" ? null : v)), 8000);
   };

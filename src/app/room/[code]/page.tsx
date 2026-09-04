@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EVENTS, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
+import { getParticipantSessionId } from "@/lib/socket";
 
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
@@ -36,7 +37,7 @@ export default function RoomPage() {
     socket.on(EVENTS.PRESENCE_UPDATE, onParticipants);
     socket.on(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
     socket.on(EVENTS.ROOM_ERROR, onError);
-    const emitJoin = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName });
+    const emitJoin = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() });
     if (socket.connected) emitJoin(); else socket.once("connect", emitJoin);
     return () => {
       socket.off(EVENTS.ROOM_JOINED, onJoined);
@@ -49,7 +50,7 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!socket) return;
-    const onReconnect = () => { const n = (localStorage.getItem("vynk_name") || promptName || name).trim(); if (n && roomId) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: n }); };
+    const onReconnect = () => { const n = (localStorage.getItem("vynk_name") || promptName || name).trim(); if (n && roomId) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: n, sessionId: getParticipantSessionId() }); };
     socket.on("reconnect" as never, onReconnect);
     socket.io.on("reconnect", onReconnect);
     return () => { socket.off("reconnect" as never, onReconnect); socket.io.off("reconnect", onReconnect); };
@@ -81,7 +82,7 @@ export default function RoomPage() {
           <span className={`text-xs px-2 py-1 rounded-full ${connState === "connected" ? "bg-green-100 text-green-700" : connState === "reconnecting" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{connState}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden sm:inline text-xs text-zinc-500">👥 {participants.length}/5</span>
+          <span className="hidden sm:inline text-xs text-zinc-500">👥 {participants.filter((p) => p.presence !== "offline").length}/5</span>
           <button onClick={handleCopy} className="text-xs border rounded-full px-3 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800">Copiar link</button>
           <button onClick={handleLeave} className="text-xs bg-zinc-900 dark:bg-white dark:text-zinc-900 text-white rounded-full px-3 py-1.5">Sair</button>
         </div>
@@ -92,20 +93,21 @@ export default function RoomPage() {
           <div className="flex-1 relative bg-black rounded-xl overflow-hidden flex items-center justify-center min-h-[240px]">
             <div className="text-zinc-400 text-center p-6">
               <div className="text-4xl mb-3">🖥️</div>
-              <p className="text-sm">{isHost ? "Você é o host — Fase 4 concluída, próxima fase compartilhará tela." : "Aguardando host — sala criada com sucesso."}</p>
+              <p className="text-sm">{isHost ? "Você é o host — Fase 5 de presença concluída." : "Aguardando host — sala criada com sucesso."}</p>
               <p className="text-xs text-zinc-500 mt-2">Fase 4: criação de salas validada via {process.env.NEXT_PUBLIC_SIGNALING_URL}</p>
             </div>
             {isHost && <div className="absolute top-3 left-3 bg-violet-600 text-white text-xs px-2 py-1 rounded-full">HOST</div>}
           </div>
-          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">Fase 4 — sem WebRTC ainda. Próxima fase adiciona presença + signaling.</div>
+          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">Fase 5 — presença online e reconexão básica. WebRTC será adicionado nas próximas fases.</div>
         </div>
         <aside className="w-full lg:w-[360px] flex flex-col border-t lg:border-t-0 lg:border-l bg-white dark:bg-zinc-900 dark:border-zinc-800">
           <div className="p-4">
-            <h3 className="text-xs font-semibold tracking-widest text-zinc-500 uppercase">Participantes — {participants.length}/5</h3>
+            <h3 className="text-xs font-semibold tracking-widest text-zinc-500 uppercase">Participantes — {participants.filter((p) => p.presence !== "offline").length}/5</h3>
             <ul className="mt-3 space-y-2">
               {participants.map((p) => (
                 <li key={p.id} className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${p.id === myId ? "bg-violet-600" : "bg-green-500"}`} />{p.name}{p.isHost && <span className="text-[10px] bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-full">HOST</span>}{p.id === myId && <span className="text-xs text-zinc-400">(você)</span>}</span>
+                  <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${p.presence === "online" ? (p.id === myId ? "bg-violet-600" : "bg-green-500") : p.presence === "reconnecting" ? "bg-amber-500" : "bg-zinc-400"}`} />{p.name}{p.isHost && <span className="text-[10px] bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-full">HOST</span>}{p.id === myId && <span className="text-xs text-zinc-400">(você)</span>}</span>
+                  <span className="text-xs text-zinc-500">{p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconectando…" : "offline"}</span>
                 </li>
               ))}
               {participants.length === 0 && <li className="text-xs text-zinc-500">Carregando…</li>}

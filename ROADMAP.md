@@ -340,21 +340,39 @@ Entrar
 
 # FASE 5 — Presença em tempo real
 
-**Status:** `NÃO INICIADA`
+**Status:** `CONCLUÍDA`
+
+## Implementação
+
+* Identidade temporária persistida no navegador com `crypto.randomUUID()` (`src/lib/socket.ts:6`)
+* Servidor mantém `presence` por participante em `server/src/types.ts:1`
+* Desconexão publica `reconnecting`; após 15s publica `offline`; após mais 5s remove o participante (`server/src/rooms.ts:65`, `server/src/index.ts:150`)
+* Reconexão troca o `socket.id` mantendo a mesma identidade, sem criar duplicata (`server/src/rooms.ts:50`, `server/src/index.ts:56`)
+* Host é preservado durante a janela de reconexão e transferido apenas após remoção definitiva
+* Lista e quantidade exibem status/colorização em `/room/[code]` (`src/app/room/[code]/page.tsx:108`)
 
 ## Tarefas
 
-* [ ] Manter participantes da sala
-* [ ] Atualizar lista em tempo real
-* [ ] Mostrar host
-* [ ] Mostrar quantidade
-* [ ] Estado `online`
-* [ ] Estado `reconnecting`
-* [ ] Estado `offline`
-* [ ] Detectar fechamento da aba
-* [ ] Remover participante desconectado
-* [ ] Evitar participante fantasma
-* [ ] Evitar participantes duplicados
+* [x] Manter participantes da sala
+* [x] Atualizar lista em tempo real
+* [x] Mostrar host
+* [x] Mostrar quantidade
+* [x] Estado `online`
+* [x] Estado `reconnecting`
+* [x] Estado `offline`
+* [x] Detectar fechamento da aba — `disconnect` do Socket.IO
+* [x] Remover participante desconectado — após janela de recuperação de 20s
+* [x] Evitar participante fantasma — remoção após `offline`
+* [x] Evitar participantes duplicados — `sessionId` temporário + rebind de socket
+
+## Validação
+
+* `server`: `npm run typecheck` e `npm run build` passaram
+* `client`: `npm run lint`, `npx tsc --noEmit` e `npm run build` passaram
+* Teste realtime local: `online → reconnecting → online` sem duplicação
+* Teste de expiração local: `online → reconnecting → offline → removido`
+
+Próxima fase requer autorização explícita: **FASE 6 — Eventos compartilhados**.
 
 ---
 

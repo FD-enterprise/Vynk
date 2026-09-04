@@ -4,7 +4,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { EVENTS } from "./events.js";
 import { roomCreateSchema, roomJoinSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema } from "./validation.js";
-import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket } from "./rooms.js";
+import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, findParticipantBySession, reconnectParticipant, markReconnecting } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
 
 const PORT = Number(process.env.PORT || 3001);
@@ -39,7 +39,7 @@ io.on("connection", (socket) => {
   socket.on(EVENTS.ROOM_CREATE, (payload: unknown) => {
     const parsed = roomCreateSchema.safeParse(payload);
     if (!parsed.success) { socket.emit(EVENTS.ROOM_ERROR, { message: parsed.error.issues[0]?.message ?? "Dados inválidos" }); return; }
-    const room = createRoom(socket.id, parsed.data.name);
+    const room = createRoom(socket.id, parsed.data.name, parsed.data.sessionId);
     socket.join(room.id);
     socket.emit(EVENTS.ROOM_CREATED, { roomId: room.id, hostId: room.hostId });
     socket.emit(EVENTS.ROOM_JOINED, { roomId: room.id, participantId: socket.id, participants: getParticipants(room.id) });
@@ -53,13 +53,26 @@ io.on("connection", (socket) => {
     const upper = roomId.toUpperCase();
     const room = getRoom(upper);
     if (!room) { socket.emit(EVENTS.ROOM_ERROR, { message: "Sala não encontrada." }); return; }
-    if (room.participants.size >= 5) { socket.emit(EVENTS.ROOM_ERROR, { message: "Sala cheia (máx. 5 participantes)." }); return; }
+    const previous = findParticipantBySession(upper, parsed.data.sessionId);
+    if (previous && previous.id !== socket.id && previous.presence !== "online") {
+      const participant = reconnectParticipant(upper, previous.id, socket.id, name, parsed.data.sessionId);
+      if (!participant) { socket.emit(EVENTS.ROOM_ERROR, { message: "Não foi possível recuperar sua presença." }); return; }
+      socket.join(upper);
+      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
+      emitParticipants(upper);
+      return;
+    }
+    if (previous && previous.id !== socket.id && previous.presence === "online") {
+      socket.emit(EVENTS.ROOM_ERROR, { message: "Este participante já está conectado." });
+      return;
+    }
     if (room.participants.has(socket.id)) {
       socket.join(upper);
       socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
       return;
     }
-    const p = addParticipant(upper, socket.id, name);
+    if (room.participants.size >= 5) { socket.emit(EVENTS.ROOM_ERROR, { message: "Sala cheia (máx. 5 participantes)." }); return; }
+    const p = addParticipant(upper, socket.id, name, parsed.data.sessionId);
     if (!p) { socket.emit(EVENTS.ROOM_ERROR, { message: "Não foi possível entrar na sala." }); return; }
     socket.join(upper);
     socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
@@ -141,9 +154,21 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const room = getRoomBySocket(socket.id);
     if (!room) { chatTimestamps.delete(socket.id); return; }
-    const { room: remaining } = removeParticipant(room.id, socket.id);
+    const pendingRoom = markReconnecting(room.id, socket.id, () => {
+      emitParticipants(room.id);
+      setTimeout(() => {
+        const current = getRoom(room.id);
+        const participant = current?.participants.get(socket.id);
+        if (!current || !participant || participant.presence !== "offline") return;
+        const { room: remaining, wasHost } = removeParticipant(room.id, socket.id);
+        if (remaining) {
+          emitParticipants(remaining.id);
+          if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { hostId: remaining.hostId });
+        }
+      }, 5_000);
+    });
     chatTimestamps.delete(socket.id);
-    if (remaining) { emitParticipants(remaining.id); io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { hostId: remaining.hostId }); }
+    if (pendingRoom) emitParticipants(pendingRoom.id);
   });
 });
 

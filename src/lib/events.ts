@@ -17,5 +17,6 @@ export const EVENTS = {
   PRESENCE_UPDATE: "presence:update",
 } as const;
 
-export type Participant = { id: string; name: string; isHost: boolean; joinedAt: number; micMuted: boolean };
+export type PresenceState = "online" | "reconnecting" | "offline";
+export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; joinedAt: number; micMuted: boolean; presence: PresenceState };
 export type ChatMessage = { id: string; roomId: string; authorId: string; authorName: string; text: string; timestamp: number };
