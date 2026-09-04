@@ -296,29 +296,28 @@ Somente avançar quando dois clientes conseguirem se comunicar.
 
 # FASE 4 — Criação de salas
 
-**Status:** `EM ANDAMENTO`
+**Status:** `CONCLUÍDA`
 
 ## Nota isolamento (pós Fase 3)
 
-* Signaling isolado em `server/` (Node + Socket.IO) — deploy Render: `https://vynk-mwxh.onrender.com` (`server/render.yaml:1`)
-* Frontend Vercel (`https://vynk-dun.vercel.app`) consome via `NEXT_PUBLIC_SIGNALING_URL` (`src/lib/socket.ts:5`, `.env.example:4`)
+* Signaling isolado em `server/` (Node + Socket.IO) — deploy Render: `https://vynk-mwxh.onrender.com` (`server/render.yaml:1`) — `GET /health` OK
+* Frontend Vercel (`https://vynk-dun.vercel.app`) consome via `NEXT_PUBLIC_SIGNALING_URL` (`src/lib/socket.ts:5`, `.env.example:4`, `src/hooks/useSocket.ts:1`)
 * Fallback produção: `https://vynk-mwxh.onrender.com` se env não setado
-
-**Status original:** `NÃO INICIADA`
+* Fix build Vercel: `tsconfig.json:33` + `eslint.config.mjs:14` + `.vercelignore:1` excluindo `server/` (erro `Cannot find module 'express'` resolvido)
 
 ## Tarefas
 
-* [ ] Criar tipo `Room`
-* [ ] Gerar código aleatório
-* [ ] Não utilizar IDs públicos sequenciais
-* [ ] Criar sala
-* [ ] Entrar por código
-* [ ] Entrar por link
-* [ ] Solicitar nome temporário
-* [ ] Identificar host
-* [ ] Validar código
-* [ ] Validar nome
-* [ ] Tratar sala inexistente
+* [x] Criar tipo `Room` — `server/src/types.ts:4`, `server/src/rooms.ts:1`
+* [x] Gerar código aleatório — `server/src/rooms.ts:5` (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, 6 chars, colisão verificada)
+* [x] Não utilizar IDs públicos sequenciais — código aleatório não sequencial
+* [x] Criar sala — `room:create` → `room:created` (`server/src/index.ts:31`, `src/app/page.tsx:14`)
+* [x] Entrar por código — `room:join` com validação `roomIdSchema` (`server/src/validation.ts:4`, `src/app/page.tsx:28`)
+* [x] Entrar por link — `/room/[code]` (`src/app/room/[code]/page.tsx:1`, link `/room/K7M4PX`)
+* [x] Solicitar nome temporário — `localStorage vynk_name` + prompt (`src/app/page.tsx:14`, `src/app/room/[code]/page.tsx:12`)
+* [x] Identificar host — `isHost` + badge HOST (`server/src/rooms.ts:13`, `src/app/room/[code]/page.tsx:42`)
+* [x] Validar código — `z.string().regex(/^[A-Z0-9]{6}$/)` (`server/src/validation.ts:4`)
+* [x] Validar nome — `z.string().min(1).max(24).regex(...)` (`server/src/validation.ts:3`, frontend `validateName`)
+* [x] Tratar sala inexistente — `room:error: Sala não encontrada.` (`server/src/index.ts:42`, `src/app/room/[code]/page.tsx:22`)
 * [ ] Implementar saída da sala
 
 ## Fluxo
