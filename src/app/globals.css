@@ -84,6 +84,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-control-group { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .vynk-control-button { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 13px; border: 1px solid #3a424e; border-radius: 9px; color: #d8dde4; background: #222730; font-size: 12px; font-weight: 650; transition: background .18s ease, border-color .18s ease, color .18s ease; }
 .vynk-control-button:hover { border-color: #566171; background: #2a303a; color: #fff; }
+.vynk-control-button.muted { color: #c4ccd6; }
+.vynk-mic-indicator { width: 18px; height: 18px; position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; }
+.vynk-mic-indicator::after { content: ""; position: absolute; left: 50%; top: 50%; width: 23px; height: 2px; border-radius: 999px; background: currentColor; opacity: 0; transform: translate(-50%, -50%) rotate(-45deg) scaleX(0); transform-origin: center; transition: opacity .16s ease, transform .2s cubic-bezier(.2,.75,.25,1); }
+.vynk-mic-indicator.muted::after { opacity: 1; transform: translate(-50%, -50%) rotate(-45deg) scaleX(1); }
 .vynk-control-button.accent { border-color: transparent; background: var(--accent); color: #1b0e0a; }
 .vynk-control-button.accent:hover { background: var(--accent-strong); }
 .vynk-control-button.danger { border-color: rgba(255,107,74,.48); background: rgba(255,107,74,.12); color: #ffad9d; }
@@ -242,4 +246,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   .vynk-home-card { padding: 23px 19px; }
   .vynk-home-footer { width: calc(100% - 36px); gap: 10px; font-size: 8px; }
   .vynk-home-footer span:last-child { text-align: right; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vynk-mic-indicator::after { transition: none; }
 }
