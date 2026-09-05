@@ -48,6 +48,7 @@ const RTC_CONFIGURATION: RTCConfiguration = {
 export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, localMicrophoneStream, onRemoteStream, onRemoteMicrophoneStream, onRemotePeerRemoved, isRoomActive }: Props) {
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const localCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const previousScreenStream = useRef<MediaStream | null>(null);
   const microphoneTransceivers = useRef<Map<string, RTCRtpTransceiver>>(new Map());
   const remotePeerIsHost = useRef<Map<string, boolean>>(new Map());
@@ -56,6 +57,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   const dataChannels = useRef<Map<string, Set<RTCDataChannel>>>(new Map());
   const retryAttempts = useRef<Map<string, number>>(new Map());
   const retryTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const offerResendTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const previousIsHost = useRef(isHost);
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
@@ -85,12 +87,16 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     remoteStreams.current.delete(peerId);
     remoteMicrophoneStreams.current.delete(peerId);
     pendingCandidates.current.delete(peerId);
+    localCandidates.current.delete(peerId);
     microphoneTransceivers.current.delete(peerId);
     remotePeerIsHost.current.delete(peerId);
 
     const retryTimer = retryTimers.current.get(peerId);
     if (retryTimer) clearTimeout(retryTimer);
     retryTimers.current.delete(peerId);
+    const offerResendTimer = offerResendTimers.current.get(peerId);
+    if (offerResendTimer) clearTimeout(offerResendTimer);
+    offerResendTimers.current.delete(peerId);
     retryAttempts.current.delete(peerId);
   }, []);
 
@@ -105,6 +111,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   const getTrackedPeerIds = useCallback(() => new Set([
     ...connections.current.keys(),
     ...pendingCandidates.current.keys(),
+    ...localCandidates.current.keys(),
     ...microphoneTransceivers.current.keys(),
     ...remotePeerIsHost.current.keys(),
     ...remoteStreams.current.keys(),
@@ -186,10 +193,14 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     };
     connection.onicecandidate = (event) => {
       if (event.candidate && socket && isRoomActive() && connections.current.get(peerId) === connection) {
+        const candidate = event.candidate.toJSON();
+        const current = localCandidates.current.get(peerId) ?? [];
+        current.push(candidate);
+        localCandidates.current.set(peerId, current);
         socket.emit(EVENTS.WEBRTC_ICE_CANDIDATE, {
           roomId,
           targetId: peerId,
-          candidate: event.candidate.toJSON(),
+          candidate,
         });
       }
     };
@@ -208,6 +219,9 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         const timer = retryTimers.current.get(peerId);
         if (timer) clearTimeout(timer);
         retryTimers.current.delete(peerId);
+        const offerResendTimer = offerResendTimers.current.get(peerId);
+        if (offerResendTimer) clearTimeout(offerResendTimer);
+        offerResendTimers.current.delete(peerId);
       }
       if (state === "disconnected") setPeerState(peerId, "disconnected");
       if (state === "failed") {
@@ -269,6 +283,21 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       await connection.setLocalDescription(offer);
       if (!isRoomActive() || connections.current.get(peer.id) !== connection || !socket.connected) return;
       socket.emit(EVENTS.WEBRTC_OFFER, { roomId, targetId: peer.id, sdp: offer });
+      const offerResendTimer = setTimeout(() => {
+        offerResendTimers.current.delete(peer.id);
+        if (!isRoomActive() || connections.current.get(peer.id) !== connection || connection.signalingState !== "have-local-offer" || !socket.connected) return;
+        const localDescription = connection.localDescription;
+        if (!localDescription) return;
+        socket.emit(EVENTS.WEBRTC_OFFER, {
+          roomId,
+          targetId: peer.id,
+          sdp: { type: "offer", sdp: localDescription.sdp },
+        });
+        for (const candidate of localCandidates.current.get(peer.id) ?? []) {
+          socket.emit(EVENTS.WEBRTC_ICE_CANDIDATE, { roomId, targetId: peer.id, candidate });
+        }
+      }, 1_500);
+      offerResendTimers.current.set(peer.id, offerResendTimer);
     } catch {
       setPeerFailedIfCurrent(peer.id, connection);
     }
@@ -304,6 +333,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       const remoteIsHost = peers.find((peer) => peer.id === data.fromId)?.isHost ?? false;
       const connection = createPeer(data.fromId, "answer", remoteIsHost);
       if (!connection) return;
+      if (connection.remoteDescription?.type === "offer" && connection.remoteDescription.sdp === data.sdp.sdp) return;
       try {
         await connection.setRemoteDescription(new RTCSessionDescription(data.sdp));
         if (!isRoomActive() || connections.current.get(data.fromId) !== connection) return;
@@ -333,6 +363,9 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       if (!connection || connection.signalingState !== "have-local-offer") return;
       try {
         await connection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const offerResendTimer = offerResendTimers.current.get(data.fromId);
+        if (offerResendTimer) clearTimeout(offerResendTimer);
+        offerResendTimers.current.delete(data.fromId);
         if (!isRoomActive() || connections.current.get(data.fromId) !== connection) return;
         await flushCandidates(data.fromId, connection);
       } catch {
