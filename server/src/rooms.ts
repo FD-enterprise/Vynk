@@ -1,8 +1,9 @@
-import type { Room, Participant } from "./types.js";
+import type { ChatMessage, Room, Participant } from "./types.js";
 import { MAX_PARTICIPANTS } from "./events.js";
 
 const rooms = new Map<string, Room>();
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem I/O/0/1 ambíguos
+export const MAX_CHAT_HISTORY = 200;
 
 export function generateRoomCode(): string {
   let code = "";
@@ -13,7 +14,7 @@ export function generateRoomCode(): string {
 export function getRoom(roomId: string): Room | undefined { return rooms.get(roomId.toUpperCase()); }
 export function createRoom(hostId: string, hostName: string, sessionId: string): Room {
   const id = generateRoomCode();
-  const room: Room = { id, hostId, participants: new Map(), createdAt: Date.now(), screenSharing: false, presenceTimers: new Map() };
+  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, presenceTimers: new Map() };
   const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, joinedAt: Date.now(), micMuted: true, presence: "online" };
   room.participants.set(hostId, host);
   rooms.set(id, room);
@@ -82,6 +83,16 @@ export function markReconnecting(roomId: string, socketId: string, onExpired: ()
 export function getParticipants(roomId: string): Participant[] {
   const r = getRoom(roomId);
   return r ? [...r.participants.values()] : [];
+}
+export function addChatMessage(roomId: string, message: ChatMessage): void {
+  const room = getRoom(roomId);
+  if (!room) return;
+  room.chatMessages.push(message);
+  if (room.chatMessages.length > MAX_CHAT_HISTORY) room.chatMessages.splice(0, room.chatMessages.length - MAX_CHAT_HISTORY);
+}
+export function getChatMessages(roomId: string): ChatMessage[] {
+  const room = getRoom(roomId);
+  return room ? [...room.chatMessages] : [];
 }
 export function getRoomBySocket(socketId: string): Room | undefined {
   for (const r of rooms.values()) if (r.participants.has(socketId)) return r;

@@ -14,6 +14,7 @@ export type Room = {
   id: string;
   hostId: string;
   participants: Map<string, Participant>;
+  chatMessages: ChatMessage[];
   createdAt: number;
   screenSharing: boolean;
   presenceTimers: Map<string, NodeJS.Timeout>;

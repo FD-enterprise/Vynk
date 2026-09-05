@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addParticipant, createRoom, getRoom, markReconnecting, reconnectParticipant, removeParticipant } from "../server/src/rooms";
+import { addChatMessage, addParticipant, createRoom, getChatMessages, getRoom, markReconnecting, MAX_CHAT_HISTORY, reconnectParticipant, removeParticipant } from "../server/src/rooms";
 
 test("room lifecycle removes, reconnects, transfers host, and deletes an empty room", () => {
   const room = createRoom("host-old", "Host", "host-session");
@@ -28,4 +28,29 @@ test("room lifecycle removes, reconnects, transfers host, and deletes an empty r
   const afterLastLeave = removeParticipant(room.id, "guest-new");
   assert.equal(afterLastLeave.room, undefined);
   assert.equal(getRoom(room.id), undefined);
+});
+
+test("room keeps a bounded chat history that can be replayed after refresh", () => {
+  const room = createRoom("chat-host", "Host", "chat-host-session");
+
+  for (let index = 0; index < MAX_CHAT_HISTORY + 5; index += 1) {
+    addChatMessage(room.id, {
+      id: `message-${index}`,
+      roomId: room.id,
+      authorId: "chat-host",
+      authorName: "Host",
+      text: `Mensagem ${index}`,
+      timestamp: index,
+    });
+  }
+
+  const history = getChatMessages(room.id);
+  assert.equal(history.length, MAX_CHAT_HISTORY);
+  assert.equal(history[0]?.id, "message-5");
+  assert.equal(history.at(-1)?.id, `message-${MAX_CHAT_HISTORY + 4}`);
+
+  history.pop();
+  assert.equal(getChatMessages(room.id).length, MAX_CHAT_HISTORY);
+
+  removeParticipant(room.id, "chat-host");
 });

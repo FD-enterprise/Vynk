@@ -4,7 +4,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH, MAX_SOCKET_PAYLOAD_BYTES } from "./events.js";
 import { roomCreateSchema, roomJoinSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, microphoneStateSchema } from "./validation.js";
-import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, findParticipantBySession, reconnectParticipant, markReconnecting } from "./rooms.js";
+import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, findParticipantBySession, reconnectParticipant, markReconnecting, addChatMessage, getChatMessages } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
 
 const PORT = Number(process.env.PORT || 3001);
@@ -52,7 +52,7 @@ io.on("connection", (socket) => {
     const room = createRoom(socket.id, parsed.data.name, parsed.data.sessionId);
     socket.join(room.id);
     socket.emit(EVENTS.ROOM_CREATED, { roomId: room.id, hostId: room.hostId });
-    socket.emit(EVENTS.ROOM_JOINED, { roomId: room.id, participantId: socket.id, participants: getParticipants(room.id) });
+    socket.emit(EVENTS.ROOM_JOINED, { roomId: room.id, participantId: socket.id, participants: getParticipants(room.id), chatMessages: getChatMessages(room.id) });
     emitParticipants(room.id);
   });
 
@@ -73,20 +73,20 @@ io.on("connection", (socket) => {
       previousSocket?.leave(upper);
       previousSocket?.disconnect(true);
       socket.join(upper);
-      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
+      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper) });
       emitParticipants(upper);
       return;
     }
     if (room.participants.has(socket.id)) {
       socket.join(upper);
-      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
+      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper) });
       return;
     }
     if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: `Sala cheia (máx. ${MAX_PARTICIPANTS} participantes).` }); return; }
     const p = addParticipant(upper, socket.id, name, parsed.data.sessionId);
     if (!p) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Não foi possível entrar na sala." }); return; }
     socket.join(upper);
-    socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
+    socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper) });
     emitParticipants(upper);
   });
 
@@ -177,6 +177,7 @@ io.on("connection", (socket) => {
     const { room, participant: author } = authorized;
     if (isRateLimited(`chat:${socket.id}`, 5, 10_000)) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Muitas mensagens. Aguarde um pouco." }); return; }
     const msg: ChatMessage = { id: `${Date.now()}-${socket.id.slice(0, 4)}`, roomId: upper, authorId: socket.id, authorName: author.name, text: text.slice(0, MAX_CHAT_MESSAGE_LENGTH), timestamp: Date.now() };
+    addChatMessage(upper, msg);
     io.to(upper).emit(EVENTS.CHAT_MESSAGE, msg);
   });
 

@@ -90,9 +90,10 @@ export default function RoomPage() {
     if (!socket || !roomId || needsName) return;
     const effectiveName = (name || promptName).trim();
     if (!effectiveName) return;
-    const onJoined = (data: { roomId: string; participants: Participant[] }) => {
+    const onJoined = (data: { roomId: string; participants: Participant[]; chatMessages?: ChatMessage[] }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
       setParticipants(data.participants);
+      setChatMessages(data.chatMessages ?? []);
       const me = data.participants.find((p) => p.id === socket.id);
       setIsHost(!!me?.isHost);
       socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted: microphoneStateRef.current !== "active" || microphoneMutedRef.current });
