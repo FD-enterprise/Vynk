@@ -24,6 +24,7 @@ export type ChatMessage = {
   id: string;
   roomId: string;
   authorId: string;
+  authorSessionId: string;
   authorName: string;
   text: string;
   timestamp: number;

@@ -176,7 +176,7 @@ io.on("connection", (socket) => {
     if (!authorized) return;
     const { room, participant: author } = authorized;
     if (isRateLimited(`chat:${socket.id}`, 5, 10_000)) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Muitas mensagens. Aguarde um pouco." }); return; }
-    const msg: ChatMessage = { id: `${Date.now()}-${socket.id.slice(0, 4)}`, roomId: upper, authorId: socket.id, authorName: author.name, text: text.slice(0, MAX_CHAT_MESSAGE_LENGTH), timestamp: Date.now() };
+    const msg: ChatMessage = { id: `${Date.now()}-${socket.id.slice(0, 4)}`, roomId: upper, authorId: socket.id, authorSessionId: author.sessionId, authorName: author.name, text: text.slice(0, MAX_CHAT_MESSAGE_LENGTH), timestamp: Date.now() };
     addChatMessage(upper, msg);
     io.to(upper).emit(EVENTS.CHAT_MESSAGE, msg);
   });

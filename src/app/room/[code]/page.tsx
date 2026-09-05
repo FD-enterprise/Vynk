@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { EVENTS, MAX_CHAT_MESSAGE_LENGTH, MAX_PARTICIPANTS, type ChatMessage, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
 import { getParticipantSessionId } from "@/lib/socket";
+import { isOwnChatMessage } from "@/lib/chatIdentity";
 import { createRoomLifecycleToken, RoomLifecycleGuard } from "@/lib/mediaLifecycle";
 import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
 import { useScreenShare } from "@/hooks/useScreenShare";
@@ -38,6 +39,7 @@ export default function RoomPage() {
   const roomToken = useMemo(() => createRoomLifecycleToken(roomId), [roomId]);
   const { socket, state: connState, error: socketError } = useSocket();
   const [name] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("vynk_name") || "" : ""));
+  const [participantSessionId] = useState(() => (typeof window !== "undefined" ? getParticipantSessionId() : ""));
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -422,7 +424,7 @@ export default function RoomPage() {
               <ol className="vynk-chat-list" aria-live="polite">
                 {chatMessages.length === 0 && <li className="vynk-chat-empty"><span className="vynk-chat-empty-icon">✦</span><strong>O chat está aberto</strong><span>Envie uma mensagem para começar.</span></li>}
                 {chatMessages.map((message) => {
-                  const isMine = message.authorId === myId;
+                  const isMine = isOwnChatMessage(message, participantSessionId, myId);
                   return <li key={message.id} className={`vynk-message ${isMine ? "mine" : ""}`}><div className="vynk-message-meta"><span>{isMine ? "Você" : message.authorName}</span><time dateTime={new Date(message.timestamp).toISOString()}>{new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div><p>{message.text}</p></li>;
                 })}
                 <li ref={chatEndRef} aria-hidden="true" />

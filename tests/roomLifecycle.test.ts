@@ -38,6 +38,7 @@ test("room keeps a bounded chat history that can be replayed after refresh", () 
       id: `message-${index}`,
       roomId: room.id,
       authorId: "chat-host",
+      authorSessionId: "chat-host-session",
       authorName: "Host",
       text: `Mensagem ${index}`,
       timestamp: index,
@@ -47,6 +48,7 @@ test("room keeps a bounded chat history that can be replayed after refresh", () 
   const history = getChatMessages(room.id);
   assert.equal(history.length, MAX_CHAT_HISTORY);
   assert.equal(history[0]?.id, "message-5");
+  assert.equal(history[0]?.authorSessionId, "chat-host-session");
   assert.equal(history.at(-1)?.id, `message-${MAX_CHAT_HISTORY + 4}`);
 
   history.pop();

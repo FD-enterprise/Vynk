@@ -27,7 +27,7 @@ export const MAX_SOCKET_PAYLOAD_BYTES = 64 * 1024;
 
 export type PresenceState = "online" | "reconnecting" | "offline";
 export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; joinedAt: number; micMuted: boolean; presence: PresenceState };
-export type ChatMessage = { id: string; roomId: string; authorId: string; authorName: string; text: string; timestamp: number };
+export type ChatMessage = { id: string; roomId: string; authorId: string; authorSessionId?: string; authorName: string; text: string; timestamp: number };
 export type RoomCreatePayload = { name: string; sessionId: string };
 export type RoomJoinPayload = { roomId: string; name: string; sessionId: string };
 export type RoomLeavePayload = { roomId: string };
