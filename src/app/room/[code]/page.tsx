@@ -91,7 +91,10 @@ export default function RoomPage() {
     const onHostChanged = (data: { hostId: string }) => { setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId }))); setIsHost(data.hostId === socket.id); };
     const onError = (data: { message: string }) => setError(data.message);
     const onSocketDisconnect = () => setParticipants([]);
-    const onScreenStopped = () => setRemoteStreams(new Map());
+    const onScreenStopped = () => {
+      setRemoteStreams(new Map());
+      setAudioPlaybackStates((current) => new Map([...current].filter(([peerId]) => !peerId.endsWith(":screen"))));
+    };
     const onMicrophoneState = (data: { roomId: string; participantId: string; muted: boolean }) => {
       if (data.roomId !== roomId) return;
       setParticipants((current) => current.map((participant) => participant.id === data.participantId ? { ...participant, micMuted: data.muted } : participant));
@@ -168,6 +171,7 @@ export default function RoomPage() {
     setAudioPlaybackStates((current) => {
       const next = new Map(current);
       next.delete(peerId);
+      next.delete(`${peerId}:screen`);
       return next;
     });
   }, []);
@@ -273,6 +277,7 @@ export default function RoomPage() {
   const qualityValues = Object.values(peerQuality);
   const mediaQuality = qualityValues.length === 0 ? null : qualityValues.includes("degraded") ? "instável" : qualityValues.every((value) => value === "good") ? "estável" : "conectando";
   const myId = socket?.id ?? "";
+  const failedPeerNames = participants.filter((participant) => participant.id !== myId && peerStates[participant.id] === "failed").map((participant) => participant.name);
   const participantCount = participants.filter((p) => p.presence !== "offline").length;
   const connectionLabel = connState === "connected" ? "Conectado" : connState === "reconnecting" ? "Reconectando" : connState === "error" ? "Sem conexão" : "Conectando";
   const connectionTone = connState === "connected" ? "online" : connState === "reconnecting" ? "warning" : "offline";
@@ -312,12 +317,13 @@ export default function RoomPage() {
       </header>
       {(error || socketError) && <div className="vynk-alert" role="alert"><span className="vynk-alert-mark">!</span><span>{error || socketError}</span><button onClick={() => setError(null)} aria-label="Fechar aviso"><Icon name="x" size={15} /></button></div>}
       {[...remoteMicrophoneStreams.entries()].map(([peerId, stream]) => <RemoteAudio key={peerId} peerId={peerId} stream={stream} onPlaybackStateChange={handleAudioPlaybackState} />)}
+      {[...remoteStreams.entries()].filter(([, stream]) => stream.getAudioTracks().some((track) => track.readyState === "live")).map(([peerId, stream]) => <RemoteAudio key={`${peerId}:screen`} peerId={`${peerId}:screen`} stream={stream} onPlaybackStateChange={handleAudioPlaybackState} />)}
       <main className="vynk-workspace">
         <section className="vynk-stage-column" aria-label="Palco da sala">
           <div className="vynk-stage-heading"><div><span className="vynk-eyebrow">TRANSMISSÃO AO VIVO</span><h1>{displayStream ? "Tela compartilhada" : "Palco da sala"}</h1></div><span className={`vynk-stage-state ${displayStream ? "active" : ""}`}><span className="vynk-status-dot" />{displayStream ? "Ao vivo" : "Aguardando tela"}</span></div>
           <div ref={stageRef} className="vynk-stage">
             <div className="vynk-stage-grid" aria-hidden="true" />
-            {displayStream && <video ref={videoRef} autoPlay muted={isHost} playsInline className="vynk-stage-video" />}
+            {displayStream && <video ref={videoRef} autoPlay muted playsInline className="vynk-stage-video" />}
             {!displayStream && <div className="vynk-stage-empty"><div className="vynk-stage-icon"><Icon name="monitor" size={28} /></div><span className="vynk-eyebrow">{isHost ? "VOCÊ É O HOST" : "SALA EM ESPERA"}</span><h2>{isHost ? "Compartilhe seu palco" : "Aguardando o host"}</h2><p>{isHost ? "Mostre uma janela ou a tela inteira para começar a apresentação." : "Assim que o host iniciar, a transmissão aparecerá aqui."}</p>{isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className="vynk-stage-action"><Icon name="monitor" size={16} />{screen.state === "requesting-permission" ? "Solicitando acesso…" : "Compartilhar tela"}</button>}{screen.error && <p className="vynk-inline-error">{screen.error}</p>}</div>}
             {displayStream && <div className="vynk-live-badge"><span className="vynk-status-dot" />{isHost ? "Sua tela" : "Ao vivo"}</div>}
             {isHost && <span className="vynk-host-badge">HOST</span>}
@@ -332,6 +338,7 @@ export default function RoomPage() {
             <div className="vynk-media-status"><span className={`vynk-status-dot ${mediaQuality === "instável" ? "warning" : mediaQuality === "estável" ? "online" : ""}`} />{screen.state === "sharing" ? "Tela sendo compartilhada" : Object.keys(peerStates).length === 0 ? "Aguardando participantes" : mediaQuality ? `Mídia ${mediaQuality}` : "Conectando mídia"}</div>
           </div>
           {(microphone.error || hasAudioError) && <div className="vynk-inline-alert" role="alert">{microphone.error || "Não foi possível reproduzir o áudio de um participante. Tente liberar o áudio ou reconectar."}</div>}
+          {failedPeerNames.length > 0 && <div className="vynk-inline-alert" role="status">A mídia de {failedPeerNames.join(", ")} não conectou. Fizemos uma nova tentativa; se continuar, peça para a pessoa atualizar a sala ou trocar de rede.</div>}
           {isHost && <p className="vynk-stage-hint">Para apresentar outra aba, escolha <strong>Tela inteira</strong> no seletor do navegador e habilite o áudio do sistema quando necessário.</p>}
         </section>
         <aside className="vynk-sidebar">

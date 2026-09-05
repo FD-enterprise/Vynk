@@ -16,6 +16,18 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## WebRTC entre redes diferentes
+
+O frontend usa STUN por padrão. Para habilitar um relay TURN sem alterar o código, configure no ambiente de build da Vercel:
+
+```bash
+NEXT_PUBLIC_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349
+NEXT_PUBLIC_TURN_USERNAME=usuario
+NEXT_PUBLIC_TURN_CREDENTIAL=credencial
+```
+
+Sem as três variáveis completas, o Vynk mantém somente STUN e não ativa nenhum serviço pago. Como essas variáveis são entregues ao navegador, prefira credenciais TURN temporárias ou com prazo curto.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

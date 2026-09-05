@@ -24,9 +24,13 @@ type Props = {
   onRemotePeerRemoved: (peerId: string) => void;
 };
 
-const RTC_CONFIGURATION: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+const turnUrls = (process.env.NEXT_PUBLIC_TURN_URLS ?? "").split(",").map((url) => url.trim()).filter(Boolean);
+const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME?.trim();
+const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL?.trim();
+const iceServers: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] }];
+if (turnUrls.length > 0 && turnUsername && turnCredential) iceServers.push({ urls: turnUrls, username: turnUsername, credential: turnCredential });
+
+const RTC_CONFIGURATION: RTCConfiguration = { iceServers, iceCandidatePoolSize: 10 };
 
 export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, localMicrophoneStream, onRemoteStream, onRemoteMicrophoneStream, onRemotePeerRemoved }: Props) {
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -36,10 +40,13 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   const remotePeerIsHost = useRef<Map<string, boolean>>(new Map());
   const remoteStreams = useRef<Map<string, MediaStream>>(new Map());
   const remoteMicrophoneStreams = useRef<Map<string, MediaStream>>(new Map());
+  const retryAttempts = useRef<Map<string, number>>(new Map());
+  const retryTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const previousIsHost = useRef(isHost);
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
   const [quality, setQuality] = useState<Record<string, PeerQuality>>({});
+  const [retryVersion, setRetryVersion] = useState(0);
 
   const setPeerState = useCallback((peerId: string, state: PeerConnectionState) => {
     setStates((current) => current[peerId] === state ? current : { ...current, [peerId]: state });
@@ -54,6 +61,9 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     remotePeerIsHost.current.clear();
     remoteStreams.current.clear();
     remoteMicrophoneStreams.current.clear();
+    retryTimers.current.forEach((timer) => clearTimeout(timer));
+    retryTimers.current.clear();
+    retryAttempts.current.clear();
     peerIds.forEach((peerId) => onRemotePeerRemoved(peerId));
     setStates((current) => {
       if (peerIds.length === 0) return current;
@@ -135,9 +145,35 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       const state = connection.iceConnectionState;
       setIceStates((current) => current[peerId] === state ? current : { ...current, [peerId]: state });
       if (state === "checking") setPeerState(peerId, "connecting");
-      if (state === "connected" || state === "completed") setPeerState(peerId, "connected");
+      if (state === "connected" || state === "completed") {
+        setPeerState(peerId, "connected");
+        retryAttempts.current.delete(peerId);
+        const timer = retryTimers.current.get(peerId);
+        if (timer) clearTimeout(timer);
+        retryTimers.current.delete(peerId);
+      }
       if (state === "disconnected") setPeerState(peerId, "disconnected");
-      if (state === "failed") setPeerState(peerId, "failed");
+      if (state === "failed") {
+        setPeerState(peerId, "failed");
+        const attempts = retryAttempts.current.get(peerId) ?? 0;
+        if (mode === "offer" && attempts < 1 && !retryTimers.current.has(peerId)) {
+          retryAttempts.current.set(peerId, attempts + 1);
+          const timer = setTimeout(() => {
+            retryTimers.current.delete(peerId);
+            if (connections.current.get(peerId) !== connection || connection.iceConnectionState !== "failed") return;
+            connection.close();
+            connections.current.delete(peerId);
+            pendingCandidates.current.delete(peerId);
+            microphoneTransceivers.current.delete(peerId);
+            remotePeerIsHost.current.delete(peerId);
+            remoteStreams.current.delete(peerId);
+            remoteMicrophoneStreams.current.delete(peerId);
+            onRemotePeerRemoved(peerId);
+            setRetryVersion((version) => version + 1);
+          }, 1_200);
+          retryTimers.current.set(peerId, timer);
+        }
+      }
     };
     connection.ondatachannel = (event) => {
       event.channel.onopen = () => setPeerState(peerId, "connected");
@@ -145,7 +181,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     connections.current.set(peerId, connection);
     setPeerState(peerId, "new");
     return connection;
-  }, [isHost, onRemoteMicrophoneStream, onRemoteStream, roomId, setPeerState, socket]);
+  }, [isHost, onRemoteMicrophoneStream, onRemotePeerRemoved, onRemoteStream, roomId, setPeerState, socket]);
 
   const flushCandidates = useCallback(async (peerId: string, connection: RTCPeerConnection) => {
     const pending = pendingCandidates.current.get(peerId) ?? [];
@@ -287,6 +323,10 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       remotePeerIsHost.current.delete(peerId);
       remoteStreams.current.delete(peerId);
       remoteMicrophoneStreams.current.delete(peerId);
+      const retryTimer = retryTimers.current.get(peerId);
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimers.current.delete(peerId);
+      retryAttempts.current.delete(peerId);
       onRemotePeerRemoved(peerId);
       setStates((current) => {
         const next = { ...current };
@@ -319,7 +359,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       const shouldInitiate = isHost ? !peer.isHost : !peer.isHost && selfId < peer.id;
       if (peer.id !== selfId && !connections.current.has(peer.id) && shouldInitiate) void createOffer(peer);
     }
-  }, [createOffer, isHost, localScreenStream, peers, renegotiateScreen, selfId, socket]);
+  }, [createOffer, isHost, localScreenStream, peers, renegotiateScreen, retryVersion, selfId, socket]);
 
   useEffect(() => {
     const activeIds = new Set(peers.map((peer) => peer.id));
@@ -332,6 +372,10 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       remotePeerIsHost.current.delete(peerId);
       remoteStreams.current.delete(peerId);
       remoteMicrophoneStreams.current.delete(peerId);
+      const retryTimer = retryTimers.current.get(peerId);
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimers.current.delete(peerId);
+      retryAttempts.current.delete(peerId);
       onRemotePeerRemoved(peerId);
       setStates((current) => {
         const next = { ...current };
@@ -359,6 +403,9 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     remotePeerIsHost.current.clear();
     remoteStreams.current.clear();
     remoteMicrophoneStreams.current.clear();
+    retryTimers.current.forEach((timer) => clearTimeout(timer));
+    retryTimers.current.clear();
+    retryAttempts.current.clear();
   }, []);
 
   useEffect(() => {
