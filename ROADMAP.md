@@ -933,19 +933,30 @@ reconstrói WebRTC
 
 # FASE 21 — Cleanup e estabilidade
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Ao sair
 
-* [ ] Fechar PeerConnections
-* [ ] Parar screen track
-* [ ] Parar audio track
-* [ ] Parar microphone track
-* [ ] Remover listeners
-* [ ] Remover timers
-* [ ] Limpar streams
-* [ ] Limpar participantes
-* [ ] Evitar conexões órfãs
+* [x] Fechar PeerConnections — encerramento centralizado remove callbacks antes de fechar cada peer
+* [x] Parar screen track — saída e desmontagem interrompem todas as faixas capturadas
+* [x] Parar audio track — áudio da tela e streams remotos são interrompidos no descarte
+* [x] Parar microphone track — hook expõe parada explícita e também limpa ao desmontar
+* [x] Remover listeners — Socket.IO, DOM, tracks e data channels removem seus handlers
+* [x] Remover timers — retries ICE, amostragem de qualidade e timeouts de entrada são cancelados
+* [x] Limpar streams — elementos de mídia são pausados e têm `srcObject` removido
+* [x] Limpar participantes — estado local da sala, chat e reprodução é esvaziado ao sair
+* [x] Evitar conexões órfãs — saída explícita ou navegação interna fecha recursos e informa o servidor uma única vez
+
+## Validação automatizada
+
+* [x] Recursos e ciclo do cliente — 5 testes cobrem captura cancelada, trava de saída, tracks, peer e data channel
+* [x] Ciclo da sala — teste versionado confirma remoção, reentrada, reconexão, transferência de host e exclusão da sala vazia
+* [x] Qualidade do código — lint, TypeScript e builds de frontend/servidor sem erros
+
+## Validação pendente
+
+* [ ] Ativar tela e microfone no navegador, sair e confirmar que os indicadores de captura desaparecem
+* [ ] Repetir saída pelo botão, botão voltar e F5 no ambiente de deploy
 
 ---
 

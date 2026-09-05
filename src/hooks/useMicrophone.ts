@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CaptureRequestGuard, stopMediaStream } from "@/lib/mediaLifecycle";
 
 export type MicrophoneState = "off" | "requesting-permission" | "active" | "error";
 
@@ -10,8 +11,7 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeStream = useRef<MediaStream | null>(null);
-  const captureRequest = useRef(0);
-  const capturePending = useRef(false);
+  const captureRequest = useRef(new CaptureRequestGuard());
   const mounted = useRef(false);
   const onStateChangeRef = useRef(onStateChange);
 
@@ -21,8 +21,7 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
 
   const stopStream = useCallback((current: MediaStream, notify = true) => {
     if (activeStream.current !== current) return;
-    current.getAudioTracks().forEach((track) => { track.onended = null; });
-    current.getTracks().forEach((track) => track.stop());
+    stopMediaStream(current);
     activeStream.current = null;
     setStream(null);
     setState("off");
@@ -41,17 +40,29 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
   const mute = useCallback(() => setTrackMuted(true), [setTrackMuted]);
   const unmute = useCallback(() => setTrackMuted(false), [setTrackMuted]);
   const toggle = useCallback(() => setTrackMuted(!muted), [muted, setTrackMuted]);
+  const stop = useCallback(() => {
+    captureRequest.current.cancel();
+    const current = activeStream.current;
+    if (current) {
+      stopStream(current);
+      return;
+    }
+    setStream(null);
+    setState("off");
+    setMuted(true);
+    setError(null);
+  }, [stopStream]);
 
   const start = useCallback(async () => {
-    if (capturePending.current || activeStream.current) return null;
-    capturePending.current = true;
-    const request = ++captureRequest.current;
+    if (activeStream.current) return null;
+    const request = captureRequest.current.begin();
+    if (request === null) return null;
     setError(null);
     setState("requesting-permission");
 
     try {
       const current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!mounted.current || request !== captureRequest.current) {
+      if (!mounted.current || !captureRequest.current.isCurrent(request)) {
         current.getTracks().forEach((track) => track.stop());
         return null;
       }
@@ -71,7 +82,7 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
       onStateChangeRef.current?.(false);
       return current;
     } catch (cause) {
-      if (!mounted.current || request !== captureRequest.current) return null;
+      if (!mounted.current || !captureRequest.current.isCurrent(request)) return null;
       const errorName = cause instanceof DOMException ? cause.name : "";
       if (errorName === "NotAllowedError" || errorName === "SecurityError") {
         setError("Permissão para usar o microfone foi negada. Libere o acesso no navegador e tente novamente.");
@@ -83,25 +94,22 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
       setState("error");
       return null;
     } finally {
-      if (request === captureRequest.current) capturePending.current = false;
+      captureRequest.current.finish(request);
     }
   }, [stopStream]);
 
   useEffect(() => {
+    const capture = captureRequest.current;
     mounted.current = true;
     return () => {
       mounted.current = false;
-      captureRequest.current += 1;
-      capturePending.current = false;
+      capture.cancel();
       const current = activeStream.current;
       if (!current) return;
-      current.getAudioTracks().forEach((track) => { track.onended = null; });
-      current.getTracks().forEach((track) => track.stop());
+      stopMediaStream(current);
       activeStream.current = null;
-      setMuted(true);
-      onStateChangeRef.current?.(true);
     };
   }, []);
 
-  return { state, muted, stream, error, start, mute, unmute, toggle };
+  return { state, muted, stream, error, start, stop, mute, unmute, toggle };
 }

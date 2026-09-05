@@ -63,12 +63,12 @@ io.on("connection", (socket) => {
     const { roomId, name } = parsed.data;
     const upper = roomId.toUpperCase();
     const room = getRoom(upper);
-    if (!room) { socket.emit(EVENTS.ROOM_ERROR, { message: "Sala não encontrada." }); return; }
+    if (!room) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Sala não encontrada." }); return; }
     const previous = findParticipantBySession(upper, parsed.data.sessionId);
     if (previous && previous.id !== socket.id) {
       const previousSocketId = previous.id;
       const participant = reconnectParticipant(upper, previousSocketId, socket.id, name, parsed.data.sessionId);
-      if (!participant) { socket.emit(EVENTS.ROOM_ERROR, { message: "Não foi possível recuperar sua presença." }); return; }
+      if (!participant) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Não foi possível recuperar sua presença." }); return; }
       const previousSocket = io.sockets.sockets.get(previousSocketId);
       previousSocket?.leave(upper);
       previousSocket?.disconnect(true);
@@ -82,9 +82,9 @@ io.on("connection", (socket) => {
       socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
       return;
     }
-    if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { message: `Sala cheia (máx. ${MAX_PARTICIPANTS} participantes).` }); return; }
+    if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: `Sala cheia (máx. ${MAX_PARTICIPANTS} participantes).` }); return; }
     const p = addParticipant(upper, socket.id, name, parsed.data.sessionId);
-    if (!p) { socket.emit(EVENTS.ROOM_ERROR, { message: "Não foi possível entrar na sala." }); return; }
+    if (!p) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Não foi possível entrar na sala." }); return; }
     socket.join(upper);
     socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
     emitParticipants(upper);
@@ -100,7 +100,7 @@ io.on("connection", (socket) => {
     socket.leave(roomId);
     if (remaining) {
       emitParticipants(remaining.id);
-      if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { hostId: remaining.hostId });
+      if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { roomId: remaining.id, hostId: remaining.hostId });
     }
   });
 
@@ -141,7 +141,7 @@ io.on("connection", (socket) => {
     const { roomId } = parsed.data;
     const authorized = getAuthorizedParticipant(socket.id, roomId);
     const room = authorized?.room;
-    if (!room || room.hostId !== socket.id) { socket.emit(EVENTS.ROOM_ERROR, { message: "Apenas o host pode compartilhar a tela." }); return; }
+    if (!room || room.hostId !== socket.id) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "Apenas o host pode compartilhar a tela." }); return; }
     room.screenSharing = true;
     socket.to(roomId).emit(EVENTS.SCREEN_STARTED, { roomId, hostId: socket.id });
   });
@@ -175,7 +175,7 @@ io.on("connection", (socket) => {
     const authorized = getAuthorizedParticipant(socket.id, upper);
     if (!authorized) return;
     const { room, participant: author } = authorized;
-    if (isRateLimited(`chat:${socket.id}`, 5, 10_000)) { socket.emit(EVENTS.ROOM_ERROR, { message: "Muitas mensagens. Aguarde um pouco." }); return; }
+    if (isRateLimited(`chat:${socket.id}`, 5, 10_000)) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Muitas mensagens. Aguarde um pouco." }); return; }
     const msg: ChatMessage = { id: `${Date.now()}-${socket.id.slice(0, 4)}`, roomId: upper, authorId: socket.id, authorName: author.name, text: text.slice(0, MAX_CHAT_MESSAGE_LENGTH), timestamp: Date.now() };
     io.to(upper).emit(EVENTS.CHAT_MESSAGE, msg);
   });
@@ -192,7 +192,7 @@ io.on("connection", (socket) => {
         const { room: remaining, wasHost } = removeParticipant(room.id, socket.id);
         if (remaining) {
           emitParticipants(remaining.id);
-          if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { hostId: remaining.hostId });
+          if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { roomId: remaining.id, hostId: remaining.hostId });
         }
       }, 5_000);
     });

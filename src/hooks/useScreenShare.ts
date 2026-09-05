@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CaptureRequestGuard, stopMediaStream } from "@/lib/mediaLifecycle";
 
 export type ScreenShareState = "not-sharing" | "requesting-permission" | "sharing" | "stopping" | "error";
 export type ScreenShareSurface = "browser" | "window" | "monitor" | "unknown";
@@ -27,14 +28,12 @@ export function useScreenShare(onStopped?: () => void) {
   const [surface, setSurface] = useState<ScreenShareSurface | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeStream = useRef<MediaStream | null>(null);
-  const captureRequest = useRef(0);
-  const capturePending = useRef(false);
+  const captureRequest = useRef(new CaptureRequestGuard());
   const mounted = useRef(false);
 
   const stopStream = useCallback((current: MediaStream, notify = true) => {
     if (activeStream.current !== current) return;
-    current.getVideoTracks().forEach((track) => { track.onended = null; });
-    current.getTracks().forEach((track) => track.stop());
+    stopMediaStream(current);
     activeStream.current = null;
     setStream(null);
     setSurface(null);
@@ -43,14 +42,14 @@ export function useScreenShare(onStopped?: () => void) {
   }, [onStopped]);
 
   const start = useCallback(async () => {
-    if (capturePending.current || activeStream.current) return null;
-    capturePending.current = true;
-    const request = ++captureRequest.current;
+    if (activeStream.current) return null;
+    const request = captureRequest.current.begin();
+    if (request === null) return null;
     setError(null);
     setState("requesting-permission");
     try {
       const current = await navigator.mediaDevices.getDisplayMedia(DISPLAY_MEDIA_PREFERENCES);
-      if (!mounted.current || request !== captureRequest.current) {
+      if (!mounted.current || !captureRequest.current.isCurrent(request)) {
         current.getTracks().forEach((track) => track.stop());
         return null;
       }
@@ -67,34 +66,40 @@ export function useScreenShare(onStopped?: () => void) {
       setState("sharing");
       return current;
     } catch (cause) {
-      if (!mounted.current || request !== captureRequest.current) return null;
+      if (!mounted.current || !captureRequest.current.isCurrent(request)) return null;
       const denied = cause instanceof DOMException && cause.name === "NotAllowedError";
       setSurface(null);
       setError(denied ? "Permissão para compartilhar a tela foi negada." : "Não foi possível compartilhar a tela.");
       setState("error");
       return null;
     } finally {
-      if (request === captureRequest.current) capturePending.current = false;
+      captureRequest.current.finish(request);
     }
   }, [stopStream]);
 
   const stop = useCallback(() => {
+    captureRequest.current.cancel();
     const current = activeStream.current;
-    if (!current) return;
+    if (!current) {
+      setStream(null);
+      setSurface(null);
+      setState("not-sharing");
+      setError(null);
+      return;
+    }
     setState("stopping");
     stopStream(current);
   }, [stopStream]);
 
   useEffect(() => {
+    const capture = captureRequest.current;
     mounted.current = true;
     return () => {
       mounted.current = false;
-      captureRequest.current += 1;
-      capturePending.current = false;
+      capture.cancel();
       const current = activeStream.current;
       if (!current) return;
-      current.getVideoTracks().forEach((track) => { track.onended = null; });
-      current.getTracks().forEach((track) => track.stop());
+      stopMediaStream(current);
       activeStream.current = null;
     };
   }, []);

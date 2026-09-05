@@ -1,9 +1,10 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EVENTS, MAX_CHAT_MESSAGE_LENGTH, MAX_PARTICIPANTS, type ChatMessage, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
 import { getParticipantSessionId } from "@/lib/socket";
+import { createRoomLifecycleToken, RoomLifecycleGuard } from "@/lib/mediaLifecycle";
 import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
 import { useScreenShare } from "@/hooks/useScreenShare";
 import { useMicrophone } from "@/hooks/useMicrophone";
@@ -33,6 +34,8 @@ export default function RoomPage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
   const roomId = ((params?.code as string) ?? "").toUpperCase();
+  const [roomLifecycle] = useState(() => new RoomLifecycleGuard());
+  const roomToken = useMemo(() => createRoomLifecycleToken(roomId), [roomId]);
   const { socket, state: connState, error: socketError } = useSocket();
   const [name] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("vynk_name") || "" : ""));
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -51,14 +54,20 @@ export default function RoomPage() {
   const chatEndRef = useRef<HTMLLIElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  useEffect(() => {
+    roomLifecycle.activate(roomToken);
+  }, [roomLifecycle, roomToken]);
+
   const handleScreenStopped = useCallback(() => {
-    socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
+    if (socket?.connected) socket.emit(EVENTS.SCREEN_STOPPED, { roomId });
   }, [roomId, socket]);
   const screen = useScreenShare(handleScreenStopped);
   const handleMicrophoneState = useCallback((muted: boolean) => {
-    socket?.emit(EVENTS.MICROPHONE_STATE, { roomId, muted });
+    if (socket?.connected) socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted });
   }, [roomId, socket]);
   const microphone = useMicrophone(handleMicrophoneState);
+  const stopScreen = screen.stop;
+  const stopMicrophone = microphone.stop;
   const microphoneStateRef = useRef(microphone.state);
   const microphoneMutedRef = useRef(microphone.muted);
 
@@ -81,26 +90,28 @@ export default function RoomPage() {
     if (!socket || !roomId || needsName) return;
     const effectiveName = (name || promptName).trim();
     if (!effectiveName) return;
-    const onJoined = (data: { participants: Participant[] }) => {
+    const onJoined = (data: { roomId: string; participants: Participant[] }) => {
+      if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
       setParticipants(data.participants);
       const me = data.participants.find((p) => p.id === socket.id);
       setIsHost(!!me?.isHost);
       socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted: microphoneStateRef.current !== "active" || microphoneMutedRef.current });
     };
-    const onParticipants = (data: { participants: Participant[] }) => { setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
-    const onHostChanged = (data: { hostId: string }) => { setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId }))); setIsHost(data.hostId === socket.id); };
-    const onError = (data: { message: string }) => setError(data.message);
-    const onSocketDisconnect = () => setParticipants([]);
-    const onScreenStopped = () => {
+    const onParticipants = (data: { roomId: string; participants: Participant[] }) => { if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return; setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
+    const onHostChanged = (data: { roomId: string; hostId: string }) => { if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return; setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId }))); setIsHost(data.hostId === socket.id); };
+    const onError = (data: { message: string; roomId?: string }) => { if (roomLifecycle.isActive(roomToken) && (!data.roomId || data.roomId === roomId)) setError(data.message); };
+    const onSocketDisconnect = () => { if (roomLifecycle.isActive(roomToken)) setParticipants([]); };
+    const onScreenStopped = (data: { roomId: string }) => {
+      if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
       setRemoteStreams(new Map());
       setAudioPlaybackStates((current) => new Map([...current].filter(([peerId]) => !peerId.endsWith(":screen"))));
     };
     const onMicrophoneState = (data: { roomId: string; participantId: string; muted: boolean }) => {
-      if (data.roomId !== roomId) return;
+      if (data.roomId !== roomId || !roomLifecycle.isActive(roomToken)) return;
       setParticipants((current) => current.map((participant) => participant.id === data.participantId ? { ...participant, micMuted: data.muted } : participant));
     };
     const onChatMessage = (data: ChatMessage) => {
-      if (data.roomId !== roomId) return;
+      if (data.roomId !== roomId || !roomLifecycle.isActive(roomToken)) return;
       setChatMessages((current) => [...current, data].slice(-200));
     };
     socket.on(EVENTS.ROOM_JOINED, onJoined);
@@ -112,7 +123,7 @@ export default function RoomPage() {
     socket.on(EVENTS.MICROPHONE_STATE, onMicrophoneState);
     socket.on(EVENTS.CHAT_MESSAGE, onChatMessage);
     socket.on("disconnect", onSocketDisconnect);
-    const emitJoin = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() });
+    const emitJoin = () => { if (roomLifecycle.isActive(roomToken)) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() }); };
     if (socket.connected) emitJoin(); else socket.once("connect", emitJoin);
     return () => {
       socket.off(EVENTS.ROOM_JOINED, onJoined);
@@ -124,40 +135,44 @@ export default function RoomPage() {
       socket.off(EVENTS.MICROPHONE_STATE, onMicrophoneState);
       socket.off(EVENTS.CHAT_MESSAGE, onChatMessage);
       socket.off("disconnect", onSocketDisconnect);
+      socket.off("connect", emitJoin);
     };
-  }, [socket, roomId, name, promptName, needsName]);
+  }, [socket, roomId, roomLifecycle, roomToken, name, promptName, needsName]);
 
   useEffect(() => {
     if (!socket) return;
-    const onReconnect = () => { setError(null); const n = (localStorage.getItem("vynk_name") || promptName || name).trim(); if (n && roomId) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: n, sessionId: getParticipantSessionId() }); };
-    socket.on("reconnect" as never, onReconnect);
+    const onReconnect = () => { if (!roomLifecycle.isActive(roomToken)) return; setError(null); const n = (localStorage.getItem("vynk_name") || promptName || name).trim(); if (n && roomId) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: n, sessionId: getParticipantSessionId() }); };
     socket.io.on("reconnect", onReconnect);
-    return () => { socket.off("reconnect" as never, onReconnect); socket.io.off("reconnect", onReconnect); };
-  }, [socket, roomId, promptName, name]);
+    return () => { socket.io.off("reconnect", onReconnect); };
+  }, [socket, roomId, roomLifecycle, roomToken, promptName, name]);
 
   const handleRemoteStream = useCallback((peerId: string, stream: MediaStream) => {
+    if (!roomLifecycle.isActive(roomToken)) return;
     setRemoteStreams((current) => {
       const next = new Map(current);
       next.set(peerId, stream);
       return next;
     });
-  }, []);
+  }, [roomLifecycle, roomToken]);
   const handleRemoteMicrophoneStream = useCallback((peerId: string, stream: MediaStream) => {
+    if (!roomLifecycle.isActive(roomToken)) return;
     setRemoteMicrophoneStreams((current) => {
       const next = new Map(current);
       next.set(peerId, stream);
       return next;
     });
-  }, []);
+  }, [roomLifecycle, roomToken]);
   const handleAudioPlaybackState = useCallback((peerId: string, state: RemoteAudioPlaybackState) => {
+    if (!roomLifecycle.isActive(roomToken)) return;
     setAudioPlaybackStates((current) => {
       if (current.get(peerId) === state) return current;
       const next = new Map(current);
       next.set(peerId, state);
       return next;
     });
-  }, []);
+  }, [roomLifecycle, roomToken]);
   const handleRemotePeerRemoved = useCallback((peerId: string) => {
+    if (!roomLifecycle.isActive(roomToken)) return;
     setRemoteStreams((current) => {
       const next = new Map(current);
       next.delete(peerId);
@@ -174,9 +189,11 @@ export default function RoomPage() {
       next.delete(`${peerId}:screen`);
       return next;
     });
-  }, []);
+  }, [roomLifecycle, roomToken]);
 
-  const { states: peerStates, quality: peerQuality } = useWebRTCSignaling({
+  const isRoomActive = useCallback(() => roomLifecycle.isActive(roomToken), [roomLifecycle, roomToken]);
+
+  const { states: peerStates, quality: peerQuality, closeAllConnections } = useWebRTCSignaling({
     socket,
     roomId,
     selfId: socket?.id ?? "",
@@ -187,12 +204,19 @@ export default function RoomPage() {
     onRemoteStream: handleRemoteStream,
     onRemoteMicrophoneStream: handleRemoteMicrophoneStream,
     onRemotePeerRemoved: handleRemotePeerRemoved,
+    isRoomActive,
   });
 
   const remoteScreenStream = [...remoteStreams.values()].find((stream) => stream.getVideoTracks().some((track) => !track.muted && track.readyState === "live")) ?? null;
   const displayStream = isHost ? screen.stream : remoteScreenStream;
   useEffect(() => {
-    if (videoRef.current) videoRef.current.srcObject = displayStream;
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = displayStream;
+    return () => {
+      video.pause();
+      if (video.srcObject === displayStream) video.srcObject = null;
+    };
   }, [displayStream]);
 
   useEffect(() => {
@@ -209,7 +233,43 @@ export default function RoomPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [chatMessages]);
 
-  const handleLeave = () => { socket?.emit(EVENTS.ROOM_LEAVE, { roomId }); router.push("/"); };
+  const clearRoomState = useCallback(() => {
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+    }
+    setParticipants([]);
+    setRemoteStreams(new Map());
+    setRemoteMicrophoneStreams(new Map());
+    setAudioPlaybackStates(new Map());
+    setChatMessages([]);
+    setChatDraft("");
+    setChatError(null);
+    setIsHost(false);
+  }, []);
+
+  const releaseRoom = useCallback(() => {
+    if (!roomLifecycle.beginLeave(roomToken)) return;
+    stopScreen();
+    stopMicrophone();
+    closeAllConnections();
+    if (socket?.connected) socket.emit(EVENTS.ROOM_LEAVE, { roomId });
+    clearRoomState();
+    if (document.fullscreenElement === stageRef.current) void document.exitFullscreen().catch(() => undefined);
+  }, [clearRoomState, closeAllConnections, roomId, roomLifecycle, roomToken, socket, stopMicrophone, stopScreen]);
+
+  useEffect(() => {
+    const onPopState = () => releaseRoom();
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      const roomPath = `/room/${roomId}`.toUpperCase();
+      if (window.location.pathname.toUpperCase() !== roomPath) releaseRoom();
+    };
+  }, [releaseRoom, roomId]);
+
+  const handleLeave = () => { releaseRoom(); router.push("/"); };
   const handleCopy = async () => { await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`); };
   const handleShare = async () => {
     if (!isHost) return;
@@ -218,7 +278,7 @@ export default function RoomPage() {
       return;
     }
     const stream = await screen.start();
-    if (stream) socket?.emit(EVENTS.SCREEN_STARTED, { roomId });
+    if (stream && roomLifecycle.isActive(roomToken) && socket?.connected) socket.emit(EVENTS.SCREEN_STARTED, { roomId });
   };
   const handleFullscreen = async () => {
     if (!stageRef.current || !displayStream) return;

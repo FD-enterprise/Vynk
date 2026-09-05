@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getParticipantSessionId, getSignalingSocket } from "@/lib/socket";
 import { EVENTS } from "@/lib/events";
@@ -10,37 +10,58 @@ export default function Home() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<"create" | "join" | null>(null);
+  const pendingRequestCleanup = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => pendingRequestCleanup.current?.(), []);
 
   const validateName = (v: string) => v.trim().length >= 1 && v.trim().length <= 24;
 
   const handleCreate = () => {
     if (!validateName(name)) { setError("Informe um nome de 1 a 24 caracteres."); return; }
+    pendingRequestCleanup.current?.();
     setError(null); setLoading("create");
     const socket = getSignalingSocket();
+    const emit = () => socket.emit(EVENTS.ROOM_CREATE, { name: name.trim(), sessionId: getParticipantSessionId() });
+    let timer: number | null = null;
     const onCreated = (data: { roomId: string }) => { cleanup(); localStorage.setItem("vynk_name", name.trim()); router.push(`/room/${data.roomId}`); };
     const onError = (data: { message: string }) => { setError(data.message); setLoading(null); cleanup(); };
-    const cleanup = () => { socket.off(EVENTS.ROOM_CREATED, onCreated); socket.off(EVENTS.ROOM_ERROR, onError); };
+    const cleanup = () => {
+      socket.off(EVENTS.ROOM_CREATED, onCreated);
+      socket.off(EVENTS.ROOM_ERROR, onError);
+      socket.off("connect", emit);
+      if (timer) window.clearTimeout(timer);
+      if (pendingRequestCleanup.current === cleanup) pendingRequestCleanup.current = null;
+    };
+    pendingRequestCleanup.current = cleanup;
     socket.on(EVENTS.ROOM_CREATED, onCreated);
     socket.on(EVENTS.ROOM_ERROR, onError);
-    const emit = () => socket.emit(EVENTS.ROOM_CREATE, { name: name.trim(), sessionId: getParticipantSessionId() });
     if (socket.connected) emit(); else socket.once("connect", emit);
-    setTimeout(() => setLoading((v) => (v === "create" ? null : v)), 8000);
+    timer = window.setTimeout(() => { cleanup(); setLoading((v) => (v === "create" ? null : v)); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
   };
 
   const handleJoin = () => {
     const upper = code.trim().toUpperCase();
     if (!validateName(name)) { setError("Informe seu nome."); return; }
     if (!/^[A-Z0-9]{6}$/.test(upper)) { setError("Código deve ter 6 caracteres (A-Z, 0-9)."); return; }
+    pendingRequestCleanup.current?.();
     setError(null); setLoading("join");
     const socket = getSignalingSocket();
+    const emit = () => socket.emit(EVENTS.ROOM_JOIN, { roomId: upper, name: name.trim(), sessionId: getParticipantSessionId() });
+    let timer: number | null = null;
     const onJoined = (data: { roomId: string }) => { cleanup(); localStorage.setItem("vynk_name", name.trim()); router.push(`/room/${data.roomId}`); };
     const onError = (data: { message: string }) => { setError(data.message); setLoading(null); cleanup(); };
-    const cleanup = () => { socket.off(EVENTS.ROOM_JOINED, onJoined); socket.off(EVENTS.ROOM_ERROR, onError); };
+    const cleanup = () => {
+      socket.off(EVENTS.ROOM_JOINED, onJoined);
+      socket.off(EVENTS.ROOM_ERROR, onError);
+      socket.off("connect", emit);
+      if (timer) window.clearTimeout(timer);
+      if (pendingRequestCleanup.current === cleanup) pendingRequestCleanup.current = null;
+    };
+    pendingRequestCleanup.current = cleanup;
     socket.on(EVENTS.ROOM_JOINED, onJoined);
     socket.on(EVENTS.ROOM_ERROR, onError);
-    const emit = () => socket.emit(EVENTS.ROOM_JOIN, { roomId: upper, name: name.trim(), sessionId: getParticipantSessionId() });
     if (socket.connected) emit(); else socket.once("connect", emit);
-    setTimeout(() => setLoading((v) => (v === "join" ? null : v)), 8000);
+    timer = window.setTimeout(() => { cleanup(); setLoading((v) => (v === "join" ? null : v)); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
   };
 
   return (
