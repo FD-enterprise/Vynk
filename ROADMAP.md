@@ -908,7 +908,7 @@ reconstrói WebRTC
 * [x] Mobile — layout reordenado e controles adaptáveis
 * [x] Participantes — avatares, host, presença e estado do microfone
 * [x] Chat — estado vazio, mensagens, contador e envio acessível
-* [x] Controles — tela, microfone e liberação de áudio
+* [x] Controles — tela, microfone, liberação de áudio e modo tela cheia
 * [x] Loading — entrada na sala e carregamento de participantes
 * [x] Erros — alertas de conexão, mídia e permissões
 * [x] Estado da conexão — conectado, reconectando e sem conexão

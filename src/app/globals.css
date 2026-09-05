@@ -76,6 +76,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-live-badge { left: 16px; }
 .vynk-live-badge .vynk-status-dot { background: #ff604a; box-shadow: 0 0 0 3px rgba(255,96,74,.16); }
 .vynk-host-badge { right: 16px; color: #ffb7a8; border: 1px solid rgba(255,107,74,.35); }
+.vynk-fullscreen-button { position: absolute; z-index: 3; right: 16px; bottom: 16px; min-height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid rgba(255,255,255,.2); border-radius: 8px; background: rgba(10,12,16,.76); backdrop-filter: blur(10px); color: #f2f5f7; font-size: 11px; font-weight: 650; transition: background .18s ease, border-color .18s ease, transform .18s ease; }
+.vynk-fullscreen-button:hover { border-color: rgba(255,255,255,.38); background: rgba(28,32,39,.9); transform: translateY(-1px); }
+.vynk-stage:fullscreen { width: 100vw; height: 100vh; min-height: 100vh; border: 0; border-radius: 0; background: #000; }
+.vynk-stage:fullscreen .vynk-stage-video { width: 100%; height: 100%; }
 .vynk-control-panel { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
 .vynk-control-group { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .vynk-control-button { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 13px; border: 1px solid #3a424e; border-radius: 9px; color: #d8dde4; background: #222730; font-size: 12px; font-weight: 650; transition: background .18s ease, border-color .18s ease, color .18s ease; }
@@ -217,6 +221,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   .vynk-stage { min-height: 320px; border-radius: 15px; }
   .vynk-stage-empty h2 { font-size: 22px; }
   .vynk-stage-empty p { font-size: 12px; }
+  .vynk-fullscreen-button span { display: none; }
+  .vynk-fullscreen-button { width: 38px; padding: 0; justify-content: center; }
   .vynk-control-panel { align-items: stretch; flex-direction: column; gap: 10px; padding: 10px; }
   .vynk-control-group { width: 100%; }
   .vynk-control-button { flex: 1; justify-content: center; min-width: 0; }

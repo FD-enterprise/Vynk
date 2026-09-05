@@ -9,17 +9,19 @@ import { useScreenShare } from "@/hooks/useScreenShare";
 import { useMicrophone } from "@/hooks/useMicrophone";
 import { getRemoteAudioPlaybackState, RemoteAudio, type RemoteAudioPlaybackState } from "@/components/RemoteAudio";
 
-type IconName = "arrow" | "check" | "copy" | "lock" | "mic" | "monitor" | "send" | "users" | "volume" | "x";
+type IconName = "arrow" | "check" | "copy" | "expand" | "lock" | "mic" | "monitor" | "send" | "shrink" | "users" | "volume" | "x";
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, string[]> = {
     arrow: ["M5 12h13", "m12 6 6 6-6 6"],
     check: ["m5 12 4 4L19 6"],
     copy: ["M8 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2", "M6 8h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"],
+    expand: ["M8 3H3v5", "m3 3 6 6", "M16 3h5v5", "m21 3-6 6", "M8 21H3v-5", "m3 21 6-6", "M16 21h5v-5", "m21 21-6-6"],
     lock: ["M7 10V7a5 5 0 0 1 10 0v3", "M5 10h14v10H5z", "M12 14v2"],
     mic: ["M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z", "M19 11v1a7 7 0 0 1-14 0v-1", "M12 19v3", "M8 22h8"],
     monitor: ["M4 5h16v11H4z", "M8 21h8", "M12 16v5"],
     send: ["m22 2-7 20-4-9-9-4Z", "M22 2 11 13"],
+    shrink: ["M8 3v5H3", "m9 9-6-6", "M16 3v5h5", "m15 9 6-6", "M8 21v-5H3", "m9 15-6 6", "M16 21v-5h5", "m15 15 6 6"],
     users: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"],
     volume: ["M11 5 6 9H2v6h4l5 4z", "M15.5 8.5a5 5 0 0 1 0 7", "M19 5a10 10 0 0 1 0 14"],
     x: ["m6 6 12 12", "m18 6-12 12"],
@@ -45,7 +47,9 @@ export default function RoomPage() {
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLLIElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const handleScreenStopped = useCallback(() => {
     socket?.emit(EVENTS.SCREEN_STOPPED, { roomId });
@@ -188,6 +192,16 @@ export default function RoomPage() {
   }, [displayStream]);
 
   useEffect(() => {
+    const handleFullscreenChange = () => setIsFullscreen(document.fullscreenElement === stageRef.current);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    if (!displayStream && document.fullscreenElement === stageRef.current) void document.exitFullscreen().catch(() => undefined);
+  }, [displayStream]);
+
+  useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [chatMessages]);
 
@@ -201,6 +215,15 @@ export default function RoomPage() {
     }
     const stream = await screen.start();
     if (stream) socket?.emit(EVENTS.SCREEN_STARTED, { roomId });
+  };
+  const handleFullscreen = async () => {
+    if (!stageRef.current || !displayStream) return;
+    try {
+      if (document.fullscreenElement === stageRef.current) await document.exitFullscreen();
+      else await stageRef.current.requestFullscreen();
+    } catch {
+      setError("Não foi possível abrir a transmissão em tela cheia. Verifique as permissões do navegador.");
+    }
   };
   const handleMicrophone = async () => {
     if (microphone.state === "active" || microphone.state === "requesting-permission") return;
@@ -292,12 +315,13 @@ export default function RoomPage() {
       <main className="vynk-workspace">
         <section className="vynk-stage-column" aria-label="Palco da sala">
           <div className="vynk-stage-heading"><div><span className="vynk-eyebrow">TRANSMISSÃO AO VIVO</span><h1>{displayStream ? "Tela compartilhada" : "Palco da sala"}</h1></div><span className={`vynk-stage-state ${displayStream ? "active" : ""}`}><span className="vynk-status-dot" />{displayStream ? "Ao vivo" : "Aguardando tela"}</span></div>
-          <div className="vynk-stage">
+          <div ref={stageRef} className="vynk-stage">
             <div className="vynk-stage-grid" aria-hidden="true" />
             {displayStream && <video ref={videoRef} autoPlay muted={isHost} playsInline className="vynk-stage-video" />}
             {!displayStream && <div className="vynk-stage-empty"><div className="vynk-stage-icon"><Icon name="monitor" size={28} /></div><span className="vynk-eyebrow">{isHost ? "VOCÊ É O HOST" : "SALA EM ESPERA"}</span><h2>{isHost ? "Compartilhe seu palco" : "Aguardando o host"}</h2><p>{isHost ? "Mostre uma janela ou a tela inteira para começar a apresentação." : "Assim que o host iniciar, a transmissão aparecerá aqui."}</p>{isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className="vynk-stage-action"><Icon name="monitor" size={16} />{screen.state === "requesting-permission" ? "Solicitando acesso…" : "Compartilhar tela"}</button>}{screen.error && <p className="vynk-inline-error">{screen.error}</p>}</div>}
             {displayStream && <div className="vynk-live-badge"><span className="vynk-status-dot" />{isHost ? "Sua tela" : "Ao vivo"}</div>}
             {isHost && <span className="vynk-host-badge">HOST</span>}
+            {displayStream && <button onClick={handleFullscreen} className="vynk-fullscreen-button" aria-pressed={isFullscreen} aria-label={isFullscreen ? "Sair da tela cheia" : "Abrir transmissão em tela cheia"} title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}><Icon name={isFullscreen ? "shrink" : "expand"} size={17} /><span>{isFullscreen ? "Sair da tela cheia" : "Tela cheia"}</span></button>}
           </div>
           <div className="vynk-control-panel">
             <div className="vynk-control-group">
