@@ -884,7 +884,7 @@ reconstrói WebRTC
 
 # FASE 20 — Interface final do MVP
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Desktop
 
@@ -904,17 +904,24 @@ reconstrói WebRTC
 
 ## Tarefas
 
-* [ ] Desktop
-* [ ] Mobile
-* [ ] Participantes
-* [ ] Chat
-* [ ] Controles
-* [ ] Loading
-* [ ] Erros
-* [ ] Estado da conexão
-* [ ] Estado de compartilhamento
-* [ ] Estado do microfone
-* [ ] Acessibilidade
+* [x] Desktop — palco dominante, painel lateral e barra de controles
+* [x] Mobile — layout reordenado e controles adaptáveis
+* [x] Participantes — avatares, host, presença e estado do microfone
+* [x] Chat — estado vazio, mensagens, contador e envio acessível
+* [x] Controles — tela, microfone e liberação de áudio
+* [x] Loading — entrada na sala e carregamento de participantes
+* [x] Erros — alertas de conexão, mídia e permissões
+* [x] Estado da conexão — conectado, reconectando e sem conexão
+* [x] Estado de compartilhamento — aguardando, ao vivo e tela própria
+* [x] Estado do microfone — ativar, mutar, desmutar e erro
+* [x] Acessibilidade — regiões semânticas, foco visível, labels e aria-pressed
+
+## Validação pendente
+
+* [ ] Revisar visualmente em desktop (1440px), tablet (768px) e mobile (390px)
+* [ ] Confirmar fluxo de entrada, chat, microfone e tela no deploy
+* [ ] Confirmar contraste e navegação por teclado nos estados de erro
+* [ ] Fazer inspeção visual manual no navegador — não há aba automatizável disponível neste ambiente
 
 ---
 

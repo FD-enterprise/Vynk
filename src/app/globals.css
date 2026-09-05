@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0e1014;
+  --foreground: #eef1f4;
+  --surface: #171a20;
+  --surface-raised: #1d2129;
+  --line: #2a303a;
+  --muted: #8f98a6;
+  --soft: #bac1cc;
+  --accent: #ff6b4a;
+  --accent-strong: #ff8062;
+  --green: #6de0a1;
+  --amber: #f4c86b;
 }
 
 @theme inline {
@@ -12,15 +21,219 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* { box-sizing: border-box; }
+html { background: var(--background); }
+body { background: var(--background); color: var(--foreground); font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.vynk-shell { min-height: 100svh; background: #0e1014; color: var(--foreground); display: flex; flex-direction: column; }
+.vynk-topbar { min-height: 72px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 0 28px; background: rgba(14, 16, 20, .92); }
+.vynk-topbar-left, .vynk-topbar-actions, .vynk-brand, .vynk-connection, .vynk-member-count, .vynk-quiet-button, .vynk-leave-button { display: flex; align-items: center; }
+.vynk-topbar-left { min-width: 0; gap: 18px; }
+.vynk-topbar-actions { gap: 10px; }
+.vynk-brand { color: #f8fafc; font-size: 20px; font-weight: 750; letter-spacing: -.06em; gap: 8px; }
+.vynk-brand-mark { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 8px; color: #111318; background: var(--accent); font-size: 19px; font-weight: 800; line-height: 1; }
+.vynk-divider { width: 1px; height: 26px; background: var(--line); }
+.vynk-room-context { display: flex; flex-direction: column; gap: 3px; }
+.vynk-room-code { color: #f3f5f8; font-family: var(--font-geist-mono), monospace; font-size: 13px; letter-spacing: .12em; }
+.vynk-eyebrow { color: var(--muted); font-size: 10px; font-weight: 720; letter-spacing: .16em; line-height: 1; }
+.vynk-connection { gap: 7px; color: var(--soft); font-size: 12px; white-space: nowrap; }
+.vynk-connection.online { color: var(--green); }
+.vynk-connection.warning { color: var(--amber); }
+.vynk-connection.offline { color: #f58b82; }
+.vynk-status-dot { width: 7px; height: 7px; border-radius: 999px; background: #77808e; display: inline-block; flex: 0 0 auto; }
+.vynk-status-dot.online { background: var(--green); box-shadow: 0 0 0 3px rgba(109,224,161,.12); }
+.vynk-status-dot.warning { background: var(--amber); box-shadow: 0 0 0 3px rgba(244,200,107,.1); }
+.vynk-member-count { color: var(--soft); gap: 6px; font-family: var(--font-geist-mono), monospace; font-size: 12px; }
+.vynk-quiet-button, .vynk-leave-button { min-height: 36px; border-radius: 9px; gap: 8px; padding: 0 12px; font-size: 12px; font-weight: 620; transition: background .18s ease, color .18s ease, border-color .18s ease; }
+.vynk-quiet-button { border: 1px solid var(--line); color: var(--soft); background: transparent; }
+.vynk-quiet-button:hover { border-color: #46505d; background: var(--surface); color: #fff; }
+.vynk-leave-button { border: 1px solid rgba(255,107,74,.35); color: #ffb09e; background: rgba(255,107,74,.08); }
+.vynk-leave-button:hover { background: rgba(255,107,74,.16); color: #ffd5ca; }
+.vynk-alert { margin: 14px 16px 0; padding: 11px 14px; display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,107,74,.42); border-radius: 10px; background: rgba(114,35,28,.28); color: #ffc3b7; font-size: 13px; }
+.vynk-alert-mark { width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #1a0c09; font-size: 12px; font-weight: 800; }
+.vynk-alert button { margin-left: auto; border: 0; background: transparent; color: inherit; padding: 3px; display: grid; }
+
+.vynk-workspace { width: 100%; max-width: 1600px; margin: 0 auto; padding: 20px 28px 28px; display: grid; grid-template-columns: minmax(0, 1fr) 356px; gap: 18px; flex: 1; min-height: 0; }
+.vynk-stage-column { min-width: 0; display: flex; flex-direction: column; gap: 13px; }
+.vynk-stage-heading, .vynk-panel-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.vynk-stage-heading h1, .vynk-panel-heading h2 { margin: 7px 0 0; color: #f5f7f9; font-size: 17px; font-weight: 650; letter-spacing: -.025em; }
+.vynk-stage-state { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.vynk-stage-state.active { color: var(--green); }
+.vynk-stage { min-height: clamp(360px, calc(100svh - 300px), 760px); position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #2c333e; border-radius: 20px; background: #080a0e; box-shadow: 0 20px 55px rgba(0,0,0,.22); }
+.vynk-stage-grid { position: absolute; inset: 0; opacity: .48; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 52px 52px; mask-image: linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent); }
+.vynk-stage-video { position: relative; z-index: 1; width: 100%; height: 100%; min-height: inherit; object-fit: contain; }
+.vynk-stage-empty { position: relative; z-index: 1; width: min(420px, 90%); display: flex; align-items: center; flex-direction: column; text-align: center; }
+.vynk-stage-icon { width: 62px; height: 62px; display: grid; place-items: center; margin-bottom: 22px; border: 1px solid #3b4552; border-radius: 17px; color: var(--accent-strong); background: rgba(255,107,74,.08); }
+.vynk-stage-empty h2 { margin: 10px 0 7px; color: #f7f9fb; font-size: clamp(22px, 3vw, 29px); letter-spacing: -.04em; }
+.vynk-stage-empty p { max-width: 340px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.vynk-stage-action { margin-top: 22px; display: inline-flex; align-items: center; gap: 8px; padding: 10px 15px; border: 0; border-radius: 9px; background: var(--accent); color: #1d0e0a; font-size: 12px; font-weight: 750; transition: transform .18s ease, background .18s ease; }
+.vynk-stage-action:hover { background: var(--accent-strong); transform: translateY(-1px); }
+.vynk-live-badge, .vynk-host-badge { position: absolute; z-index: 2; top: 16px; display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 7px; background: rgba(10,12,16,.72); backdrop-filter: blur(10px); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.vynk-live-badge { left: 16px; }
+.vynk-live-badge .vynk-status-dot { background: #ff604a; box-shadow: 0 0 0 3px rgba(255,96,74,.16); }
+.vynk-host-badge { right: 16px; color: #ffb7a8; border: 1px solid rgba(255,107,74,.35); }
+.vynk-control-panel { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
+.vynk-control-group { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.vynk-control-button { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 13px; border: 1px solid #3a424e; border-radius: 9px; color: #d8dde4; background: #222730; font-size: 12px; font-weight: 650; transition: background .18s ease, border-color .18s ease, color .18s ease; }
+.vynk-control-button:hover { border-color: #566171; background: #2a303a; color: #fff; }
+.vynk-control-button.accent { border-color: transparent; background: var(--accent); color: #1b0e0a; }
+.vynk-control-button.accent:hover { background: var(--accent-strong); }
+.vynk-control-button.danger { border-color: rgba(255,107,74,.48); background: rgba(255,107,74,.12); color: #ffad9d; }
+.vynk-control-button.active { border-color: rgba(109,224,161,.34); background: rgba(109,224,161,.1); color: var(--green); }
+.vynk-control-button.audio { border-color: rgba(244,200,107,.34); background: rgba(244,200,107,.1); color: var(--amber); }
+.vynk-control-button:disabled { opacity: .58; }
+.vynk-media-status { min-width: max-content; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.vynk-inline-alert { padding: 9px 12px; border: 1px solid rgba(255,107,74,.3); border-radius: 9px; background: rgba(114,35,28,.22); color: #ffb4a6; font-size: 12px; }
+.vynk-inline-error { margin-top: 14px !important; color: #ff9b89 !important; font-size: 12px !important; }
+.vynk-stage-hint { margin: -3px 4px 0; color: #717b89; font-size: 11px; line-height: 1.55; }
+.vynk-stage-hint strong { color: #aab3bf; font-weight: 600; }
+
+.vynk-sidebar { min-height: 0; height: calc(100svh - 112px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
+.vynk-panel { padding: 19px; }
+.vynk-participants-panel { flex: 0 0 auto; }
+.vynk-count-pill { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; border: 1px solid #343c47; border-radius: 6px; color: var(--soft); background: #20252d; font-family: var(--font-geist-mono), monospace; font-size: 10px; }
+.vynk-participant-list { display: flex; flex-direction: column; gap: 11px; margin: 18px 0 0; padding: 0; list-style: none; }
+.vynk-participant { min-width: 0; display: grid; grid-template-columns: 31px minmax(0, 1fr) auto; align-items: center; gap: 9px; }
+.vynk-avatar { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 9px; color: #e8ecf1; background: #303743; font-size: 12px; font-weight: 700; }
+.vynk-avatar.mine { color: #1d0e0a; background: var(--accent); }
+.vynk-participant-name { min-width: 0; display: flex; flex-direction: column; gap: 4px; color: #e2e6eb; font-size: 13px; font-weight: 560; }
+.vynk-participant-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vynk-participant-name em { margin-left: 6px; color: var(--muted); font-size: 10px; font-style: normal; font-weight: 450; }
+.vynk-participant-name small { width: fit-content; padding: 2px 5px; border-radius: 4px; color: #ffb6a7; background: rgba(255,107,74,.12); font-size: 8px; letter-spacing: .12em; }
+.vynk-presence { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.vynk-presence.online .vynk-status-dot { background: var(--green); }
+.vynk-presence.reconnecting .vynk-status-dot { background: var(--amber); }
+.vynk-empty-row { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
+.vynk-skeleton { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); animation: vynk-pulse 1.2s ease-in-out infinite; }
+@keyframes vynk-pulse { 50% { opacity: .25; transform: scale(.72); } }
+.vynk-chat-panel { min-height: 0; height: 100%; display: flex; flex-direction: column; }
+.vynk-sidebar > section[aria-label="Chat da sala"] { min-height: 0; flex: 1; border-top: 1px solid var(--line); }
+.vynk-chat-panel > .vynk-panel-heading { padding: 18px 19px 14px; }
+.vynk-chat-body { min-height: 0; flex: 1; display: flex; }
+.vynk-chat-list { min-height: 0; width: 100%; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; margin: 0; padding: 4px 19px 16px; list-style: none; scrollbar-color: #3b4350 transparent; }
+.vynk-chat-empty { flex: 1; min-height: 170px; display: flex; align-items: center; flex-direction: column; justify-content: center; gap: 5px; color: var(--muted); font-size: 11px; text-align: center; }
+.vynk-chat-empty strong { margin-top: 7px; color: #e0e5eb; font-size: 13px; font-weight: 580; }
+.vynk-chat-empty-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: var(--accent-strong); background: rgba(255,107,74,.11); font-size: 18px; }
+.vynk-message { align-self: flex-start; max-width: 88%; padding: 9px 11px; border: 1px solid #303743; border-radius: 4px 11px 11px 11px; background: #222730; }
+.vynk-message.mine { align-self: flex-end; border-color: rgba(255,107,74,.24); border-radius: 11px 4px 11px 11px; background: rgba(255,107,74,.14); }
+.vynk-message-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; color: #aeb7c2; font-size: 10px; }
+.vynk-message.mine .vynk-message-meta { color: #ffc0b3; }
+.vynk-message-meta time { color: #737e8c; font-family: var(--font-geist-mono), monospace; font-size: 9px; }
+.vynk-message p { margin: 0; color: #e9edf1; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+.vynk-chat-form { padding: 12px 15px 13px; border-top: 1px solid var(--line); }
+.vynk-chat-input-row { display: flex; align-items: flex-end; gap: 8px; }
+.vynk-chat-input-row textarea { width: 100%; min-width: 0; resize: none; min-height: 39px; max-height: 96px; padding: 10px 11px; border: 1px solid #39424e; border-radius: 9px; outline: none; background: #20252d; color: #f1f4f6; font-size: 12px; line-height: 1.4; }
+.vynk-chat-input-row textarea::placeholder { color: #77818e; }
+.vynk-chat-input-row textarea:focus { border-color: var(--accent); }
+.vynk-chat-input-row button { width: 39px; height: 39px; display: grid; flex: 0 0 auto; place-items: center; border: 0; border-radius: 9px; background: var(--accent); color: #1d0e0a; transition: background .18s ease, transform .18s ease; }
+.vynk-chat-input-row button:hover:not(:disabled) { background: var(--accent-strong); transform: translateY(-1px); }
+.vynk-chat-input-row button:disabled { opacity: .35; }
+.vynk-chat-hint { margin: 6px 2px 0; color: #697481; font-size: 9px; text-align: right; }
+.vynk-chat-error { margin: 0 0 7px; color: #ff9d8c; font-size: 11px; }
+.vynk-sidebar-footer { display: flex; flex-direction: column; gap: 6px; padding: 13px 19px 15px; border-top: 1px solid var(--line); color: #76808d; font-size: 10px; }
+.vynk-sidebar-footer span:first-child { display: flex; align-items: center; gap: 5px; color: #9da7b3; }
+.vynk-link-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-geist-mono), monospace; }
+
+.vynk-gate { min-height: 100svh; position: relative; display: grid; place-items: center; overflow: hidden; padding: 24px; background: #0e1014; color: var(--foreground); }
+.vynk-gate::before { content: ""; position: absolute; inset: 0; opacity: .34; background-image: linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px); background-size: 54px 54px; mask-image: radial-gradient(circle at center, #000, transparent 75%); }
+.vynk-gate-glow { position: absolute; width: 500px; height: 500px; border-radius: 50%; background: rgba(255,107,74,.09); filter: blur(75px); }
+.vynk-gate-card { position: relative; width: min(100%, 430px); padding: 36px; border: 1px solid #303742; border-radius: 20px; background: rgba(23,26,32,.94); box-shadow: 0 30px 90px rgba(0,0,0,.34); }
+.vynk-gate-card .vynk-brand { margin-bottom: 56px; }
+.vynk-gate-card h1 { margin: 14px 0 9px; color: #f5f7fa; font-size: 30px; letter-spacing: -.055em; }
+.vynk-gate-card > p { margin: 0 0 28px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.vynk-gate-card > p strong { color: #e9edf2; font-family: var(--font-geist-mono), monospace; font-size: 12px; letter-spacing: .1em; }
+.vynk-gate-card label { display: block; margin-bottom: 8px; color: #c6cdd6; font-size: 12px; font-weight: 600; }
+.vynk-gate-card input { width: 100%; height: 45px; padding: 0 13px; border: 1px solid #3a424e; border-radius: 9px; outline: none; background: #20252d; color: #f3f5f7; font-size: 13px; }
+.vynk-gate-card input::placeholder { color: #77818e; }
+.vynk-gate-card input:focus { border-color: var(--accent); }
+.vynk-primary-button { width: 100%; min-height: 45px; display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 12px; border: 0; border-radius: 9px; background: var(--accent); color: #1d0e0a; font-size: 13px; font-weight: 750; transition: background .18s ease, transform .18s ease; }
+.vynk-primary-button:hover:not(:disabled) { background: var(--accent-strong); transform: translateY(-1px); }
+.vynk-primary-button:disabled { opacity: .4; }
+.vynk-gate-note { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 17px; color: #77818e; font-size: 10px; }
+
+.vynk-home { min-height: 100svh; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #0e1014; color: var(--foreground); }
+.vynk-home-grid { position: absolute; inset: 0; opacity: .28; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 60px 60px; mask-image: linear-gradient(to right, #000, transparent 88%); }
+.vynk-home::after { content: ""; position: absolute; width: 420px; height: 420px; right: 15%; top: 16%; border-radius: 50%; background: rgba(255,107,74,.08); filter: blur(90px); pointer-events: none; }
+.vynk-home-top { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 27px 5vw; }
+.vynk-home-top-note { color: #76808d; font-family: var(--font-geist-mono), monospace; font-size: 10px; letter-spacing: .12em; }
+.vynk-home-main { position: relative; z-index: 1; width: min(1120px, 90vw); margin: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 430px); align-items: center; gap: clamp(50px, 9vw, 150px); padding: 48px 0 80px; }
+.vynk-home-intro { max-width: 540px; }
+.vynk-home-intro h1 { margin: 20px 0 20px; color: #f6f8fa; font-size: clamp(48px, 7vw, 86px); font-weight: 650; letter-spacing: -.08em; line-height: .92; }
+.vynk-home-intro h1 em { color: var(--accent-strong); font-style: normal; }
+.vynk-home-intro > p { max-width: 400px; margin: 0; color: #9ca5b1; font-size: 15px; line-height: 1.7; }
+.vynk-home-features { display: flex; flex-wrap: wrap; gap: 9px 16px; margin-top: 32px; color: #8993a0; font-size: 11px; }
+.vynk-home-features span::first-letter { color: var(--accent); }
+.vynk-home-card { padding: 28px; border: 1px solid #303742; border-radius: 18px; background: rgba(23,26,32,.94); box-shadow: 0 28px 75px rgba(0,0,0,.28); }
+.vynk-home-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vynk-home-secure { color: #788391; font-family: var(--font-geist-mono), monospace; font-size: 9px; }
+.vynk-home-card h2 { margin: 19px 0 7px; color: #f4f6f8; font-size: 24px; letter-spacing: -.045em; }
+.vynk-home-card-copy { margin: 0 0 25px; color: #8d97a4; font-size: 12px; line-height: 1.5; }
+.vynk-home-field { margin-top: 13px; }
+.vynk-home-field label { display: block; margin-bottom: 7px; color: #bfc7d1; font-size: 11px; font-weight: 600; }
+.vynk-home-field input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #3a424e; border-radius: 8px; outline: none; background: #20252d; color: #f3f5f7; font-size: 13px; }
+.vynk-home-field input::placeholder { color: #77818e; }
+.vynk-home-field input:focus { border-color: var(--accent); }
+.vynk-home-primary, .vynk-home-secondary { width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; margin-top: 11px; padding: 0 13px; border-radius: 8px; font-size: 12px; font-weight: 700; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
+.vynk-home-primary { border: 0; background: var(--accent); color: #1d0e0a; }
+.vynk-home-primary:hover:not(:disabled) { background: var(--accent-strong); transform: translateY(-1px); }
+.vynk-home-secondary { border: 1px solid #3a424e; background: transparent; color: #dce1e6; }
+.vynk-home-secondary:hover:not(:disabled) { border-color: #697483; background: #252b34; transform: translateY(-1px); }
+.vynk-home-primary:disabled, .vynk-home-secondary:disabled { opacity: .4; cursor: not-allowed; }
+.vynk-home-primary span, .vynk-home-secondary span { font-size: 17px; font-weight: 400; }
+.vynk-home-separator { display: flex; align-items: center; gap: 9px; margin: 22px 0 8px; color: #697481; font-size: 10px; }
+.vynk-home-separator::before, .vynk-home-separator::after { content: ""; height: 1px; flex: 1; background: #303742; }
+.vynk-home-error { margin: 13px 0 0; padding: 9px 10px; border: 1px solid rgba(255,107,74,.4); border-radius: 7px; background: rgba(114,35,28,.23); color: #ffb3a5; font-size: 11px; }
+.vynk-home-footnote { margin: 20px 0 0; color: #697481; font-size: 9px; text-align: center; }
+.vynk-home-footer { position: relative; z-index: 1; display: flex; justify-content: space-between; width: min(1120px, 90vw); margin: auto auto 0; padding: 20px 0 25px; border-top: 1px solid #252b33; color: #66717e; font-family: var(--font-geist-mono), monospace; font-size: 9px; letter-spacing: .04em; }
+
+@media (max-width: 1050px) {
+  .vynk-workspace { grid-template-columns: minmax(0, 1fr) 318px; padding-left: 18px; padding-right: 18px; }
+  .vynk-topbar { padding: 0 18px; }
+  .vynk-control-button { padding: 0 10px; }
+  .vynk-control-button span { white-space: nowrap; }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@media (max-width: 860px) {
+  .vynk-topbar { min-height: 64px; }
+  .vynk-workspace { display: flex; flex-direction: column; padding-top: 16px; }
+  .vynk-stage { min-height: min(62svh, 560px); }
+  .vynk-sidebar { height: auto; min-height: 620px; overflow: visible; }
+  .vynk-sidebar > section[aria-label="Chat da sala"] { min-height: 400px; }
+}
+
+@media (max-width: 560px) {
+  .vynk-topbar { align-items: flex-start; flex-wrap: wrap; gap: 11px; padding-top: 13px; padding-bottom: 13px; }
+  .vynk-topbar-left { gap: 11px; }
+  .vynk-divider { height: 22px; }
+  .vynk-connection { font-size: 11px; }
+  .vynk-topbar-actions { width: 100%; justify-content: flex-end; }
+  .vynk-member-count { margin-right: auto; }
+  .vynk-workspace { gap: 14px; padding: 14px 12px 20px; }
+  .vynk-stage-heading h1 { font-size: 15px; }
+  .vynk-stage { min-height: 320px; border-radius: 15px; }
+  .vynk-stage-empty h2 { font-size: 22px; }
+  .vynk-stage-empty p { font-size: 12px; }
+  .vynk-control-panel { align-items: stretch; flex-direction: column; gap: 10px; padding: 10px; }
+  .vynk-control-group { width: 100%; }
+  .vynk-control-button { flex: 1; justify-content: center; min-width: 0; }
+  .vynk-control-button span { overflow: hidden; text-overflow: ellipsis; }
+  .vynk-media-status { min-height: 22px; }
+  .vynk-sidebar { min-height: 600px; border-radius: 13px; }
+  .vynk-gate { padding: 14px; }
+  .vynk-gate-card { padding: 26px 21px; }
+  .vynk-gate-card .vynk-brand { margin-bottom: 42px; }
+  .vynk-gate-card h1 { font-size: 27px; }
+  .vynk-home-top { padding: 20px 18px; }
+  .vynk-home-top-note { font-size: 8px; }
+  .vynk-home-main { width: min(100% - 28px, 430px); display: flex; flex-direction: column; align-items: stretch; gap: 42px; padding: 48px 0 58px; }
+  .vynk-home-intro h1 { font-size: clamp(52px, 17vw, 75px); }
+  .vynk-home-intro > p { font-size: 13px; }
+  .vynk-home-features { margin-top: 22px; font-size: 10px; }
+  .vynk-home-card { padding: 23px 19px; }
+  .vynk-home-footer { width: calc(100% - 36px); gap: 10px; font-size: 8px; }
+  .vynk-home-footer span:last-child { text-align: right; }
 }

@@ -44,29 +44,22 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4 py-10">
-      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 shadow-lg border dark:border-zinc-800 p-6 sm:p-8">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">vynk</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">Salas privadas para compartilhar tela, voz e chat — até 5 pessoas, P2P no navegador.</p>
-        <div className="mt-6 space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Seu nome temporário</label>
-            <input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: Lucas" maxLength={24} className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500" />
-          </div>
-          <button onClick={handleCreate} disabled={loading !== null} className="w-full rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-medium py-2.5 text-sm transition">{loading === "create" ? "Criando..." : "Criar sala"}</button>
-          <div className="relative flex items-center gap-3 py-2">
-            <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" /><span className="text-xs text-zinc-500">ou entre com código</span><div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
-          </div>
-          <div>
-            <label htmlFor="code" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Código da sala</label>
-            <input id="code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="K7M4PX" maxLength={6} className="mt-1 w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm tracking-widest uppercase outline-none focus:ring-2 focus:ring-violet-500" />
-          </div>
-          <button onClick={handleJoin} disabled={loading !== null} className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 font-medium py-2.5 text-sm transition disabled:opacity-50">{loading === "join" ? "Entrando..." : "Entrar na sala"}</button>
-          {error && <p role="alert" className="text-sm text-red-600 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2">{error}</p>}
-          <p className="text-xs text-zinc-500 text-center">Link da sala: <code>/room/K7M4PX</code> — Render: <span className="font-mono text-[10px]">{process.env.NEXT_PUBLIC_SIGNALING_URL || "http://localhost:3001"}</span></p>
-        </div>
-      </div>
-      <p className="mt-6 text-xs text-zinc-500">MVP v0.1 — custo zero • sem gravação • FASE 4</p>
+    <div className="vynk-home">
+      <div className="vynk-home-grid" aria-hidden="true" />
+      <header className="vynk-home-top"><div className="vynk-brand"><span className="vynk-brand-mark">v</span><span>vynk</span></div><span className="vynk-home-top-note">P2P · ATÉ 5 PESSOAS</span></header>
+      <main className="vynk-home-main">
+        <section className="vynk-home-intro"><span className="vynk-eyebrow">SALA PRIVADA, SEM RUÍDO</span><h1>Conecte-se.<br /><em>Compartilhe.</em></h1><p>Uma sala leve para conversar, apresentar uma tela e seguir o fluxo — direto no navegador.</p><div className="vynk-home-features"><span>◉ Voz em tempo real</span><span>◉ Tela compartilhada</span><span>◉ Chat efêmero</span></div></section>
+        <section className="vynk-home-card" aria-labelledby="home-card-title"><div className="vynk-home-card-top"><span className="vynk-eyebrow">COMEÇAR AGORA</span><span className="vynk-home-secure">⌁ privado por padrão</span></div><h2 id="home-card-title">Entre na sua sala</h2><p className="vynk-home-card-copy">Crie uma nova sala ou use o código que seu amigo enviou.</p>
+          <div className="vynk-home-field"><label htmlFor="name">Como devemos chamar você?</label><input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" maxLength={24} /></div>
+          <button onClick={handleCreate} disabled={loading !== null} className="vynk-home-primary">{loading === "create" ? "Criando sala…" : "Criar uma sala"}<span>↗</span></button>
+          <div className="vynk-home-separator"><span>ou entre com código</span></div>
+          <div className="vynk-home-field"><label htmlFor="code">Código da sala</label><input id="code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="K7M4PX" maxLength={6} /></div>
+          <button onClick={handleJoin} disabled={loading !== null} className="vynk-home-secondary">{loading === "join" ? "Entrando na sala…" : "Entrar com código"}<span>→</span></button>
+          {error && <p role="alert" className="vynk-home-error">{error}</p>}
+          <p className="vynk-home-footnote">Sem conta. Sem gravação. Seu nome fica só nesta sala.</p>
+        </section>
+      </main>
+      <footer className="vynk-home-footer"><span>vynk / MVP 0.1</span><span>Feito para conversas que precisam acontecer.</span></footer>
     </div>
   );
 }

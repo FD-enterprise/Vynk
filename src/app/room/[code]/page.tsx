@@ -9,6 +9,24 @@ import { useScreenShare } from "@/hooks/useScreenShare";
 import { useMicrophone } from "@/hooks/useMicrophone";
 import { getRemoteAudioPlaybackState, RemoteAudio, type RemoteAudioPlaybackState } from "@/components/RemoteAudio";
 
+type IconName = "arrow" | "check" | "copy" | "lock" | "mic" | "monitor" | "send" | "users" | "volume" | "x";
+
+function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  const paths: Record<IconName, string[]> = {
+    arrow: ["M5 12h13", "m12 6 6 6-6 6"],
+    check: ["m5 12 4 4L19 6"],
+    copy: ["M8 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2", "M6 8h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"],
+    lock: ["M7 10V7a5 5 0 0 1 10 0v3", "M5 10h14v10H5z", "M12 14v2"],
+    mic: ["M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z", "M19 11v1a7 7 0 0 1-14 0v-1", "M12 19v3", "M8 22h8"],
+    monitor: ["M4 5h16v11H4z", "M8 21h8", "M12 16v5"],
+    send: ["m22 2-7 20-4-9-9-4Z", "M22 2 11 13"],
+    users: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"],
+    volume: ["M11 5 6 9H2v6h4l5 4z", "M15.5 8.5a5 5 0 0 1 0 7", "M19 5a10 10 0 0 1 0 14"],
+    x: ["m6 6 12 12", "m18 6-12 12"],
+  };
+  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name].map((path) => <path key={path} d={path} />)}</svg>;
+}
+
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
@@ -150,7 +168,7 @@ export default function RoomPage() {
     });
   }, []);
 
-  const { states: peerStates, iceStates, quality: peerQuality } = useWebRTCSignaling({
+  const { states: peerStates, quality: peerQuality } = useWebRTCSignaling({
     socket,
     roomId,
     selfId: socket?.id ?? "",
@@ -232,110 +250,97 @@ export default function RoomPage() {
   const qualityValues = Object.values(peerQuality);
   const mediaQuality = qualityValues.length === 0 ? null : qualityValues.includes("degraded") ? "instável" : qualityValues.every((value) => value === "good") ? "estável" : "conectando";
   const myId = socket?.id ?? "";
+  const participantCount = participants.filter((p) => p.presence !== "offline").length;
+  const connectionLabel = connState === "connected" ? "Conectado" : connState === "reconnecting" ? "Reconectando" : connState === "error" ? "Sem conexão" : "Conectando";
+  const connectionTone = connState === "connected" ? "online" : connState === "reconnecting" ? "warning" : "offline";
 
   if (needsName) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 px-4">
-        <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-2xl p-6 shadow border dark:border-zinc-800">
-          <h2 className="font-semibold">Informe seu nome</h2>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">Nome temporário para entrar em {roomId}</p>
-          <input value={promptName} onChange={(e) => setPromptName(e.target.value)} placeholder="Seu nome" maxLength={24} className="mt-4 w-full rounded-lg border px-3 py-2 text-sm dark:bg-zinc-800 dark:border-zinc-700" />
-          <button onClick={() => { if (!promptName.trim()) return; localStorage.setItem("vynk_name", promptName.trim()); setNeedsName(false); }} className="mt-3 w-full rounded-lg bg-violet-600 text-white py-2 text-sm font-medium">Entrar</button>
+      <div className="vynk-gate">
+        <div className="vynk-gate-glow" aria-hidden="true" />
+        <div className="vynk-gate-card">
+          <div className="vynk-brand"><span className="vynk-brand-mark">v</span><span>vynk</span></div>
+          <span className="vynk-eyebrow">ENTRAR NA SALA</span>
+          <h1>Pronto para se conectar?</h1>
+          <p>Escolha como você quer aparecer na sala <strong>{roomId}</strong>.</p>
+          <label htmlFor="room-name">Seu nome</label>
+          <input id="room-name" autoFocus value={promptName} onChange={(e) => setPromptName(e.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && promptName.trim()) { localStorage.setItem("vynk_name", promptName.trim()); setNeedsName(false); } }} placeholder="Como devemos chamar você?" maxLength={24} />
+          <button onClick={() => { if (!promptName.trim()) return; localStorage.setItem("vynk_name", promptName.trim()); setNeedsName(false); }} disabled={!promptName.trim()} className="vynk-primary-button">Entrar na sala <Icon name="arrow" size={17} /></button>
+          <span className="vynk-gate-note"><Icon name="lock" size={13} /> Seu nome é temporário e só aparece nesta sala.</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
-      <header className="h-14 flex items-center justify-between px-3 sm:px-4 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
-        <div className="flex items-center gap-3">
-          <span className="font-bold text-sm">vynk</span>
-          <span className="text-xs px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 font-mono">Sala {roomId}</span>
-          <span className={`text-xs px-2 py-1 rounded-full ${connState === "connected" ? "bg-green-100 text-green-700" : connState === "reconnecting" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{connState}</span>
+    <div className="vynk-shell">
+      <header className="vynk-topbar">
+        <div className="vynk-topbar-left">
+          <div className="vynk-brand"><span className="vynk-brand-mark">v</span><span>vynk</span></div>
+          <span className="vynk-divider" aria-hidden="true" />
+          <div className="vynk-room-context"><span className="vynk-eyebrow">SALA</span><span className="vynk-room-code">{roomId}</span></div>
+          <span className={`vynk-connection ${connectionTone}`}><span className="vynk-status-dot" />{connectionLabel}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="hidden sm:inline text-xs text-zinc-500">👥 {participants.filter((p) => p.presence !== "offline").length}/{MAX_PARTICIPANTS}</span>
-          <button onClick={handleCopy} className="text-xs border rounded-full px-3 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800">Copiar link</button>
-          <button onClick={handleLeave} className="text-xs bg-zinc-900 dark:bg-white dark:text-zinc-900 text-white rounded-full px-3 py-1.5">Sair</button>
+        <div className="vynk-topbar-actions">
+          <span className="vynk-member-count"><Icon name="users" size={15} /> {participantCount}/{MAX_PARTICIPANTS}</span>
+          <button onClick={handleCopy} className="vynk-quiet-button"><Icon name="copy" size={15} /><span className="hidden sm:inline">Copiar link</span><span className="sm:hidden">Copiar</span></button>
+          <button onClick={handleLeave} className="vynk-leave-button"><Icon name="x" size={15} /><span>Sair</span></button>
         </div>
       </header>
-      {error && <div className="mx-3 sm:mx-4 mt-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2 text-sm text-red-700">{error}</div>}
-      {socketError && <div className="mx-3 sm:mx-4 mt-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-3 py-2 text-sm text-red-700" role="alert">{socketError}</div>}
+      {(error || socketError) && <div className="vynk-alert" role="alert"><span className="vynk-alert-mark">!</span><span>{error || socketError}</span><button onClick={() => setError(null)} aria-label="Fechar aviso"><Icon name="x" size={15} /></button></div>}
       {[...remoteMicrophoneStreams.entries()].map(([peerId, stream]) => <RemoteAudio key={peerId} peerId={peerId} stream={stream} onPlaybackStateChange={handleAudioPlaybackState} />)}
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-        <div className="flex-1 flex flex-col p-3 sm:p-4 gap-3 min-h-[40vh] lg:min-h-0">
-          <div className="flex-1 relative bg-black rounded-xl overflow-hidden flex items-center justify-center min-h-[240px]">
-            {displayStream && <video ref={videoRef} autoPlay muted={isHost} playsInline className="w-full h-full object-contain" />}
-            {!displayStream && <div className="text-zinc-400 text-center p-6">
-              <div className="text-4xl mb-3">🖥️</div>
-              <p className="text-sm">{isHost ? "Você é o host — compartilhe sua tela quando quiser." : "Aguardando host compartilhar a tela…"}</p>
-              <p className="text-xs text-zinc-500 mt-2">A transmissão acontece diretamente entre os participantes.</p>
-              {screen.error && <p className="text-xs text-red-400 mt-2">{screen.error}</p>}
-            </div>}
-            {isHost && <div className="absolute top-3 left-3 bg-violet-600 text-white text-xs px-2 py-1 rounded-full">HOST</div>}
+      <main className="vynk-workspace">
+        <section className="vynk-stage-column" aria-label="Palco da sala">
+          <div className="vynk-stage-heading"><div><span className="vynk-eyebrow">TRANSMISSÃO AO VIVO</span><h1>{displayStream ? "Tela compartilhada" : "Palco da sala"}</h1></div><span className={`vynk-stage-state ${displayStream ? "active" : ""}`}><span className="vynk-status-dot" />{displayStream ? "Ao vivo" : "Aguardando tela"}</span></div>
+          <div className="vynk-stage">
+            <div className="vynk-stage-grid" aria-hidden="true" />
+            {displayStream && <video ref={videoRef} autoPlay muted={isHost} playsInline className="vynk-stage-video" />}
+            {!displayStream && <div className="vynk-stage-empty"><div className="vynk-stage-icon"><Icon name="monitor" size={28} /></div><span className="vynk-eyebrow">{isHost ? "VOCÊ É O HOST" : "SALA EM ESPERA"}</span><h2>{isHost ? "Compartilhe seu palco" : "Aguardando o host"}</h2><p>{isHost ? "Mostre uma janela ou a tela inteira para começar a apresentação." : "Assim que o host iniciar, a transmissão aparecerá aqui."}</p>{isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className="vynk-stage-action"><Icon name="monitor" size={16} />{screen.state === "requesting-permission" ? "Solicitando acesso…" : "Compartilhar tela"}</button>}{screen.error && <p className="vynk-inline-error">{screen.error}</p>}</div>}
+            {displayStream && <div className="vynk-live-badge"><span className="vynk-status-dot" />{isHost ? "Sua tela" : "Ao vivo"}</div>}
+            {isHost && <span className="vynk-host-badge">HOST</span>}
           </div>
-          <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
-            {isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className={`rounded-full px-4 py-2 text-sm font-medium text-white ${screen.state === "sharing" ? "bg-red-600" : "bg-violet-600"} disabled:opacity-50`}>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "⏹ Parar tela" : "🖥 Compartilhar tela"}</button>}
-            {microphone.state === "active" ? <button onClick={handleToggleMicrophone} aria-pressed={microphone.muted} className={`rounded-full px-4 py-2 text-sm font-medium ${microphone.muted ? "border border-zinc-300 text-zinc-800 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800" : "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-950/40 dark:text-green-300 dark:hover:bg-green-900/50"}`}>{microphone.muted ? "🔇 Desmutar microfone" : "🎙 Mutar microfone"}</button> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800">{microphone.state === "requesting-permission" ? "Solicitando microfone…" : microphone.state === "error" ? "Tentar microfone novamente" : "🎙 Ativar microfone"}</button>}
-            {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="rounded-full bg-amber-100 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/50">🔊 Liberar áudio da chamada</button></>}
-            <span>{screen.state === "sharing" ? "Sua tela está sendo compartilhada." : "Conexão:"}</span>
-            {Object.keys(peerStates).length === 0 ? "aguardando outro peer" : Object.entries(peerStates).map(([peerId, state]) => `${peerId.slice(0, 5)} ${state} / ICE ${iceStates[peerId] ?? "new"}`).join(" · ")}
-            {mediaQuality && <span aria-label={`qualidade da mídia ${mediaQuality}`}>Mídia {mediaQuality}</span>}
-            {microphone.error && <span className="basis-full text-red-600 dark:text-red-400" role="alert">{microphone.error}</span>}
-            {hasAudioError && <span className="basis-full text-red-600 dark:text-red-400" role="alert">Não foi possível reproduzir o áudio de um participante. Aguarde a reconexão ou entre novamente na sala.</span>}
+          <div className="vynk-control-panel">
+            <div className="vynk-control-group">
+              {isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className={`vynk-control-button ${screen.state === "sharing" ? "danger" : "accent"}`} aria-label={screen.state === "sharing" ? "Parar compartilhamento de tela" : "Compartilhar tela"}><Icon name="monitor" size={17} /><span>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "Parar tela" : "Compartilhar tela"}</span></button>}
+              {microphone.state === "active" ? <button onClick={handleToggleMicrophone} aria-pressed={microphone.muted} className={`vynk-control-button ${microphone.muted ? "muted" : "active"}`}><Icon name="mic" size={17} /><span>{microphone.muted ? "Desmutar" : "Mutar"}</span></button> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="vynk-control-button muted"><Icon name="mic" size={17} /><span>{microphone.state === "requesting-permission" ? "Solicitando…" : microphone.state === "error" ? "Tentar microfone" : "Ativar microfone"}</span></button>}
+              {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="vynk-control-button audio"><Icon name="volume" size={17} /><span>Liberar áudio</span></button></>}
+            </div>
+            <div className="vynk-media-status"><span className={`vynk-status-dot ${mediaQuality === "instável" ? "warning" : mediaQuality === "estável" ? "online" : ""}`} />{screen.state === "sharing" ? "Tela sendo compartilhada" : Object.keys(peerStates).length === 0 ? "Aguardando participantes" : mediaQuality ? `Mídia ${mediaQuality}` : "Conectando mídia"}</div>
           </div>
-          {isHost && <p className="px-2 text-center text-[11px] text-zinc-500">Para trocar de aba durante a transmissão, selecione <strong>Tela inteira</strong> no seletor do navegador e habilite o áudio do sistema quando disponível. Ao escolher uma única aba, o navegador fixa a captura nela.</p>}
-        </div>
-        <aside className="w-full lg:w-[360px] flex flex-col border-t lg:border-t-0 lg:border-l bg-white dark:bg-zinc-900 dark:border-zinc-800">
-          <div className="p-4">
-            <h3 className="text-xs font-semibold tracking-widest text-zinc-500 uppercase">Participantes — {participants.filter((p) => p.presence !== "offline").length}/{MAX_PARTICIPANTS}</h3>
-            <ul className="mt-3 space-y-2">
+          {(microphone.error || hasAudioError) && <div className="vynk-inline-alert" role="alert">{microphone.error || "Não foi possível reproduzir o áudio de um participante. Tente liberar o áudio ou reconectar."}</div>}
+          {isHost && <p className="vynk-stage-hint">Para apresentar outra aba, escolha <strong>Tela inteira</strong> no seletor do navegador e habilite o áudio do sistema quando necessário.</p>}
+        </section>
+        <aside className="vynk-sidebar">
+          <section className="vynk-panel vynk-participants-panel" aria-labelledby="participants-title">
+            <div className="vynk-panel-heading"><div><span className="vynk-eyebrow">NA SALA</span><h2 id="participants-title">Participantes</h2></div><span className="vynk-count-pill">{participantCount} / {MAX_PARTICIPANTS}</span></div>
+            <ul className="vynk-participant-list">
               {participants.map((p) => (
-                <li key={p.id} className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${p.presence === "online" ? (p.id === myId ? "bg-violet-600" : "bg-green-500") : p.presence === "reconnecting" ? "bg-amber-500" : "bg-zinc-400"}`} />{p.name}{p.isHost && <span className="text-[10px] bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-full">HOST</span>}{p.id === myId && <span className="text-xs text-zinc-400">(você)</span>}</span>
-                  <span className="flex items-center gap-2 text-xs text-zinc-500"><span aria-label={p.micMuted ? "microfone mutado" : "microfone ativo"}>{p.micMuted ? "🔇" : "🎙️"}</span>{p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconectando…" : "offline"}</span>
+                <li key={p.id} className="vynk-participant">
+                  <span className={`vynk-avatar ${p.id === myId ? "mine" : ""}`}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-name"><span>{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`}><span className="vynk-status-dot" />{p.micMuted ? "mutado" : "falando"}</span>
                 </li>
               ))}
-              {participants.length === 0 && <li className="text-xs text-zinc-500">Carregando…</li>}
+              {participants.length === 0 && <li className="vynk-empty-row"><span className="vynk-skeleton" />Carregando participantes…</li>}
             </ul>
-          </div>
-          <section className="flex min-h-[280px] flex-1 flex-col border-t dark:border-zinc-800" aria-label="Chat da sala">
-            <div className="flex items-center justify-between px-4 py-3">
-              <h3 className="text-xs font-semibold tracking-widest text-zinc-500 uppercase">Chat da sala</h3>
-              <span className="text-[11px] text-zinc-400">{chatMessages.length} {chatMessages.length === 1 ? "mensagem" : "mensagens"}</span>
-            </div>
-            <ol className="flex-1 space-y-3 overflow-y-auto px-4 pb-3" aria-live="polite">
-              {chatMessages.length === 0 && <li className="py-8 text-center text-xs text-zinc-500">Nenhuma mensagem ainda. Diga oi!</li>}
-              {chatMessages.map((message) => {
-                const isMine = message.authorId === myId;
-                return <li key={message.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[88%] rounded-2xl px-3 py-2 ${isMine ? "bg-violet-600 text-white" : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100"}`}>
-                    <div className={`mb-0.5 flex items-baseline gap-2 text-[10px] ${isMine ? "text-violet-100" : "text-zinc-500 dark:text-zinc-400"}`}>
-                      <span className="font-medium">{isMine ? "Você" : message.authorName}</span>
-                      <time dateTime={new Date(message.timestamp).toISOString()}>{new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
-                    </div>
-                    <p className="whitespace-pre-wrap break-words text-sm">{message.text}</p>
-                  </div>
-                </li>;
-              })}
-              <li ref={chatEndRef} aria-hidden="true" />
-            </ol>
-            <form onSubmit={handleChatSubmit} className="border-t p-3 dark:border-zinc-800">
-              {chatError && <p className="mb-2 text-xs text-red-600 dark:text-red-400" role="alert">{chatError}</p>}
-              <div className="flex items-end gap-2">
-                <textarea value={chatDraft} onChange={(event) => { setChatDraft(event.target.value); if (chatError) setChatError(null); }} onKeyDown={handleChatKeyDown} maxLength={MAX_CHAT_MESSAGE_LENGTH} rows={2} placeholder="Escreva uma mensagem…" aria-label="Mensagem do chat" className="min-w-0 flex-1 resize-none rounded-xl border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-zinc-700" />
-                <button type="submit" disabled={!chatDraft.trim() || !socket?.connected} className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">Enviar</button>
-              </div>
-              <p className="mt-1 text-right text-[10px] text-zinc-400">Enter envia · Shift+Enter quebra linha · {chatDraft.length}/{MAX_CHAT_MESSAGE_LENGTH}</p>
-            </form>
           </section>
-          <div className="p-4 border-t dark:border-zinc-800 text-xs text-zinc-500">
-            <p>Link: <span className="font-mono">{typeof window !== "undefined" ? window.location.href : `/room/${roomId}`}</span></p>
-            <p className="mt-1">Compartilhe este link para entrar por código.</p>
-          </div>
+          <section className="flex min-h-[280px] flex-1 flex-col border-t dark:border-zinc-800" aria-label="Chat da sala">
+            <div className="vynk-chat-panel">
+            <div className="vynk-panel-heading"><div><span className="vynk-eyebrow">CONVERSA</span><h2>Chat da sala</h2></div><span className="vynk-count-pill">{chatMessages.length}</span></div>
+            <div className="vynk-chat-body">
+              <ol className="vynk-chat-list" aria-live="polite">
+                {chatMessages.length === 0 && <li className="vynk-chat-empty"><span className="vynk-chat-empty-icon">✦</span><strong>O chat está aberto</strong><span>Envie uma mensagem para começar.</span></li>}
+                {chatMessages.map((message) => {
+                  const isMine = message.authorId === myId;
+                  return <li key={message.id} className={`vynk-message ${isMine ? "mine" : ""}`}><div className="vynk-message-meta"><span>{isMine ? "Você" : message.authorName}</span><time dateTime={new Date(message.timestamp).toISOString()}>{new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div><p>{message.text}</p></li>;
+                })}
+                <li ref={chatEndRef} aria-hidden="true" />
+              </ol>
+            </div>
+            <form onSubmit={handleChatSubmit} className="vynk-chat-form">{chatError && <p className="vynk-chat-error" role="alert">{chatError}</p>}<div className="vynk-chat-input-row"><textarea value={chatDraft} onChange={(event) => { setChatDraft(event.target.value); if (chatError) setChatError(null); }} onKeyDown={handleChatKeyDown} maxLength={MAX_CHAT_MESSAGE_LENGTH} rows={1} placeholder="Escreva uma mensagem…" aria-label="Mensagem do chat" /><button type="submit" disabled={!chatDraft.trim() || !socket?.connected} aria-label="Enviar mensagem"><Icon name="send" size={17} /></button></div><p className="vynk-chat-hint">Enter envia · Shift+Enter quebra linha · {chatDraft.length}/{MAX_CHAT_MESSAGE_LENGTH}</p></form>
+            </div>
+          </section>
+          <div className="vynk-sidebar-footer"><span><Icon name="lock" size={12} /> P2P e sem gravação</span><span className="vynk-link-preview">{typeof window !== "undefined" ? window.location.origin : "vynk"}/room/{roomId}</span></div>
         </aside>
-      </div>
+      </main>
     </div>
   );
 }
