@@ -281,6 +281,7 @@ export default function RoomPage() {
   const participantCount = participants.filter((p) => p.presence !== "offline").length;
   const connectionLabel = connState === "connected" ? "Conectado" : connState === "reconnecting" ? "Reconectando" : connState === "error" ? "Sem conexão" : "Conectando";
   const connectionTone = connState === "connected" ? "online" : connState === "reconnecting" ? "warning" : "offline";
+  const screenSurfaceLabel = screen.surface === "monitor" ? "Tela inteira" : screen.surface === "window" ? "Janela" : screen.surface === "browser" ? "Aba do navegador" : "Tela selecionada";
 
   if (needsName) {
     return (
@@ -324,7 +325,7 @@ export default function RoomPage() {
           <div ref={stageRef} className="vynk-stage">
             <div className="vynk-stage-grid" aria-hidden="true" />
             {displayStream && <video ref={videoRef} autoPlay muted playsInline className="vynk-stage-video" />}
-            {!displayStream && <div className="vynk-stage-empty"><div className="vynk-stage-icon"><Icon name="monitor" size={28} /></div><span className="vynk-eyebrow">{isHost ? "VOCÊ É O HOST" : "SALA EM ESPERA"}</span><h2>{isHost ? "Compartilhe seu palco" : "Aguardando o host"}</h2><p>{isHost ? "Mostre uma janela ou a tela inteira para começar a apresentação." : "Assim que o host iniciar, a transmissão aparecerá aqui."}</p>{isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className="vynk-stage-action"><Icon name="monitor" size={16} />{screen.state === "requesting-permission" ? "Solicitando acesso…" : "Compartilhar tela"}</button>}{screen.error && <p className="vynk-inline-error">{screen.error}</p>}</div>}
+            {!displayStream && <div className="vynk-stage-empty"><div className="vynk-stage-icon"><Icon name="monitor" size={28} /></div><span className="vynk-eyebrow">{isHost ? "VOCÊ É O HOST" : "SALA EM ESPERA"}</span><h2>{isHost ? "Compartilhe seu palco" : "Aguardando o host"}</h2><p>{isHost ? "O navegador abrirá o seletor obrigatório. Para mostrar tudo, escolha Tela inteira e confirme em Compartilhar." : "Assim que o host iniciar, a transmissão aparecerá aqui."}</p>{isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className="vynk-stage-action"><Icon name="monitor" size={16} />{screen.state === "requesting-permission" ? "Escolha uma tela…" : "Escolher tela para compartilhar"}</button>}{screen.error && <p className="vynk-inline-error">{screen.error}</p>}</div>}
             {displayStream && <div className="vynk-live-badge"><span className="vynk-status-dot" />{isHost ? "Sua tela" : "Ao vivo"}</div>}
             {isHost && <span className="vynk-host-badge">HOST</span>}
             {displayStream && <button onClick={handleFullscreen} className="vynk-fullscreen-button" aria-pressed={isFullscreen} aria-label={isFullscreen ? "Sair da tela cheia" : "Abrir transmissão em tela cheia"} title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}><Icon name={isFullscreen ? "shrink" : "expand"} size={17} /><span>{isFullscreen ? "Sair da tela cheia" : "Tela cheia"}</span></button>}
@@ -335,11 +336,11 @@ export default function RoomPage() {
               {microphone.state === "active" ? <button onClick={handleToggleMicrophone} aria-pressed={microphone.muted} className={`vynk-control-button ${microphone.muted ? "muted" : "active"}`}><Icon name="mic" size={17} /><span>{microphone.muted ? "Desmutar" : "Mutar"}</span></button> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="vynk-control-button muted"><Icon name="mic" size={17} /><span>{microphone.state === "requesting-permission" ? "Solicitando…" : microphone.state === "error" ? "Tentar microfone" : "Ativar microfone"}</span></button>}
               {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="vynk-control-button audio"><Icon name="volume" size={17} /><span>Liberar áudio</span></button></>}
             </div>
-            <div className="vynk-media-status"><span className={`vynk-status-dot ${mediaQuality === "instável" ? "warning" : mediaQuality === "estável" ? "online" : ""}`} />{screen.state === "sharing" ? "Tela sendo compartilhada" : Object.keys(peerStates).length === 0 ? "Aguardando participantes" : mediaQuality ? `Mídia ${mediaQuality}` : "Conectando mídia"}</div>
+            <div className="vynk-media-status"><span className={`vynk-status-dot ${mediaQuality === "instável" ? "warning" : mediaQuality === "estável" ? "online" : ""}`} />{screen.state === "sharing" ? `${screenSurfaceLabel} sendo compartilhada` : Object.keys(peerStates).length === 0 ? "Aguardando participantes" : mediaQuality ? `Mídia ${mediaQuality}` : "Conectando mídia"}</div>
           </div>
           {(microphone.error || hasAudioError) && <div className="vynk-inline-alert" role="alert">{microphone.error || "Não foi possível reproduzir o áudio de um participante. Tente liberar o áudio ou reconectar."}</div>}
           {failedPeerNames.length > 0 && <div className="vynk-inline-alert" role="status">A mídia de {failedPeerNames.join(", ")} não conectou. Fizemos uma nova tentativa; se continuar, peça para a pessoa atualizar a sala ou trocar de rede.</div>}
-          {isHost && <p className="vynk-stage-hint">Para apresentar outra aba, escolha <strong>Tela inteira</strong> no seletor do navegador e habilite o áudio do sistema quando necessário.</p>}
+          {isHost && <p className="vynk-stage-hint">Por segurança, a escolha final sempre acontece no navegador. Recomendado: selecione <strong>Tela inteira</strong> e habilite o áudio do sistema quando necessário.</p>}
         </section>
         <aside className="vynk-sidebar">
           <section className="vynk-panel vynk-participants-panel" aria-labelledby="participants-title">

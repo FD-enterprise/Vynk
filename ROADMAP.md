@@ -840,7 +840,7 @@ reconstrói WebRTC
 * [x] Detectar queda — Socket.IO e WebRTC limpam a sessão antiga
 * [x] Estado `reconnecting` — interface acompanha a tentativa de retorno
 * [x] Reconectar socket — até 5 tentativas automáticas
-* [x] Reentrar na sala — `sessionId` persistente recupera a presença
+* [x] Reentrar na sala — `sessionId` por aba recupera a presença sem bloquear nomes iguais em outras abas
 * [x] Reconstruir peers — nova lista de participantes dispara a malha WebRTC
 * [x] Recuperar estado da transmissão — streams locais continuam disponíveis para nova oferta
 * [x] Evitar duplicação — conexões antigas, listeners e streams remotos são removidos antes da reconstrução
@@ -852,6 +852,11 @@ reconstrói WebRTC
 * [ ] Confirmar retorno da lista de participantes
 * [ ] Confirmar retorno de microfone e tela sem duplicação
 * [ ] Confirmar erro após falha definitiva de reconexão
+
+## Validação automatizada
+
+* [x] Atualizar com F5 — a nova conexão assume a sessão, encerra o socket antigo e preserva o host
+* [x] Entrar com o mesmo nome em outra aba — sessões distintas são aceitas
 
 ---
 
@@ -912,7 +917,8 @@ reconstrói WebRTC
 * [x] Loading — entrada na sala e carregamento de participantes
 * [x] Erros — alertas de conexão, mídia e permissões
 * [x] Estado da conexão — conectado, reconectando e sem conexão
-* [x] Estado de compartilhamento — aguardando, ao vivo e tela própria
+* [x] Estado de compartilhamento — aguardando, ao vivo, tela própria e identificação da fonte escolhida
+* [x] Escolha da tela — interface explica o seletor obrigatório do navegador e recomenda compartilhar a tela inteira
 * [x] Estado do microfone — ativar, mutar, desmutar e erro
 * [x] Acessibilidade — regiões semânticas, foco visível, labels e aria-pressed
 
@@ -973,11 +979,16 @@ reconstrói WebRTC
 * [ ] Notebook
 * [ ] Mobile como espectador
 
+## Resultado observado
+
+* [x] Teste inicial com 3 participantes executado — um espectador recebeu a tela e outro não
+* [ ] Repetir o teste com 3 participantes após as correções de ICE, reprodução e reconexão
+
 ---
 
 # FASE 23 — Avaliação STUN/TURN
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
 
 ## Objetivo
 
@@ -989,7 +1000,20 @@ Descobrir se STUN é suficiente para os usuários reais do MVP.
 * [ ] Registrar falhas ICE
 * [ ] Identificar redes problemáticas
 * [ ] Verificar se problema é NAT/firewall
-* [ ] Não ativar TURN pago automaticamente
+* [x] Não ativar TURN pago automaticamente — suporte opcional permanece desabilitado sem configuração explícita
+
+## Implementação preparada
+
+* [x] Usar STUN do Google e Cloudflare como alternativas
+* [x] Tentar reconstruir a conexão uma vez após falha ICE
+* [x] Permitir configuração opcional de TURN por variáveis de ambiente, sem credenciais padrão
+* [x] Separar a reprodução do vídeo da tela e do áudio para evitar bloqueio de autoplay
+
+## Validação pendente
+
+* [ ] Repetir o teste com 3 participantes em redes diferentes
+* [ ] Confirmar se o aviso de falha identifica o espectador afetado
+* [ ] Só escolher provedor, custo e ativação de TURN se os testes demonstrarem necessidade
 
 ## Decisão
 
