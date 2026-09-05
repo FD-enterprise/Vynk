@@ -28,6 +28,10 @@ NEXT_PUBLIC_TURN_CREDENTIAL=credencial
 
 Sem as três variáveis completas, o Vynk mantém somente STUN e não ativa nenhum serviço pago. Como essas variáveis são entregues ao navegador, prefira credenciais TURN temporárias ou com prazo curto.
 
+Se o provedor entregar credenciais diferentes para cada servidor, informe as três listas na mesma ordem, separadas por vírgula. URLs TURN devem usar o formato `turn:host:porta?transport=tcp` ou `turns:host:porta?transport=tcp`.
+
+Para diagnosticar um provedor TURN, configure temporariamente `NEXT_PUBLIC_FORCE_TURN=true`. Isso força o uso do relay e consome a franquia mesmo quando uma conexão direta seria possível; remova ou desative a variável após o teste.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

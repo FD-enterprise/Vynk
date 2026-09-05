@@ -26,13 +26,24 @@ type Props = {
   isRoomActive: () => boolean;
 };
 
-const turnUrls = (process.env.NEXT_PUBLIC_TURN_URLS ?? "").split(",").map((url) => url.trim()).filter(Boolean);
-const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME?.trim();
-const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL?.trim();
-const iceServers: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] }];
-if (turnUrls.length > 0 && turnUsername && turnCredential) iceServers.push({ urls: turnUrls, username: turnUsername, credential: turnCredential });
+const parseEnvList = (value: string | undefined) => value?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
+const turnUrls = parseEnvList(process.env.NEXT_PUBLIC_TURN_URLS);
+const turnUsernames = parseEnvList(process.env.NEXT_PUBLIC_TURN_USERNAME);
+const turnCredentials = parseEnvList(process.env.NEXT_PUBLIC_TURN_CREDENTIAL);
+const turnServers: RTCIceServer[] = [];
+if (turnUrls.length > 0 && turnUsernames.length === turnUrls.length && turnCredentials.length === turnUrls.length) {
+  turnUrls.forEach((url, index) => turnServers.push({ urls: url, username: turnUsernames[index], credential: turnCredentials[index] }));
+} else if (turnUrls.length > 0 && turnUsernames.length === 1 && turnCredentials.length === 1) {
+  turnServers.push({ urls: turnUrls, username: turnUsernames[0], credential: turnCredentials[0] });
+}
+const iceServers: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] }, ...turnServers];
+const forceRelay = process.env.NEXT_PUBLIC_FORCE_TURN === "true";
 
-const RTC_CONFIGURATION: RTCConfiguration = { iceServers, iceCandidatePoolSize: 10 };
+const RTC_CONFIGURATION: RTCConfiguration = {
+  iceServers,
+  iceCandidatePoolSize: 10,
+  ...(forceRelay ? { iceTransportPolicy: "relay" as const } : {}),
+};
 
 export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, localMicrophoneStream, onRemoteStream, onRemoteMicrophoneStream, onRemotePeerRemoved, isRoomActive }: Props) {
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
