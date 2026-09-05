@@ -65,16 +65,16 @@ io.on("connection", (socket) => {
     const room = getRoom(upper);
     if (!room) { socket.emit(EVENTS.ROOM_ERROR, { message: "Sala não encontrada." }); return; }
     const previous = findParticipantBySession(upper, parsed.data.sessionId);
-    if (previous && previous.id !== socket.id && previous.presence !== "online") {
-      const participant = reconnectParticipant(upper, previous.id, socket.id, name, parsed.data.sessionId);
+    if (previous && previous.id !== socket.id) {
+      const previousSocketId = previous.id;
+      const participant = reconnectParticipant(upper, previousSocketId, socket.id, name, parsed.data.sessionId);
       if (!participant) { socket.emit(EVENTS.ROOM_ERROR, { message: "Não foi possível recuperar sua presença." }); return; }
+      const previousSocket = io.sockets.sockets.get(previousSocketId);
+      previousSocket?.leave(upper);
+      previousSocket?.disconnect(true);
       socket.join(upper);
       socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper) });
       emitParticipants(upper);
-      return;
-    }
-    if (previous && previous.id !== socket.id && previous.presence === "online") {
-      socket.emit(EVENTS.ROOM_ERROR, { message: "Este participante já está conectado." });
       return;
     }
     if (room.participants.has(socket.id)) {

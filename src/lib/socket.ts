@@ -5,10 +5,10 @@ let socket: Socket | null = null;
 
 export function getParticipantSessionId(): string {
   const key = "vynk_participant_session";
-  const existing = localStorage.getItem(key);
+  const existing = sessionStorage.getItem(key);
   if (existing) return existing;
   const created = crypto.randomUUID();
-  localStorage.setItem(key, created);
+  sessionStorage.setItem(key, created);
   return created;
 }
 
