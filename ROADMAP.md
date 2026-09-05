@@ -1028,6 +1028,12 @@ Descobrir se STUN é suficiente para os usuários reais do MVP.
 
 ## Decisão
 
+### Evidência atual (05/09/2026)
+
+* O teste manual mais recente informado pelo usuário funcionou com voz, tela e chat entre os participantes.
+* O deploy público continua sem TURN configurado; o teste atual indica que STUN atende às redes testadas, mas não garante todas as combinações de NAT/firewall.
+* A configuração opcional de TURN permanece desativada até que um novo teste reproduza falhas frequentes.
+
 Se os testes mostrarem:
 
 ```text
@@ -1052,7 +1058,23 @@ somente então implementar
 
 # FASE 24 — Validação da Vercel
 
-**Status:** `NÃO INICIADA`
+**Status:** `EM ANDAMENTO`
+
+## Validação executada (05/09/2026)
+
+* Build de produção compilado com Webpack; todas as rotas foram geradas sem erros.
+* Suíte automatizada passou: 7 testes, 0 falhas.
+* Lint e TypeScript passaram.
+* Frontend público respondeu `200` em `https://vynk-dun.vercel.app/`.
+* Healthcheck do frontend respondeu `ok` em `/api/health`.
+* Healthcheck do signaling respondeu `200` em `https://vynk-mwxh.onrender.com/health`.
+* O teste manual do usuário confirmou chat, voz e tela funcionando após o deploy.
+
+## Pendências de validação manual
+
+* Repetir F5, saída e reconexão em uma sala real no deploy.
+* Repetir com 3–5 participantes em redes diferentes e observar se o signaling permanece estável.
+* Confirmar que os limites gratuitos atuais continuam aceitáveis.
 
 ## Objetivo
 
