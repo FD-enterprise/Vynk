@@ -60,7 +60,9 @@ export default function Home() {
     const onResult = (data: { roomId: string; allowed: boolean; message: string }) => {
       if (data.roomId !== roomId) return;
       cleanup(); setLoading(null); setStatus(null);
-      if (!data.allowed) setError(data.message);
+      if (!data.allowed) { setError(data.message); return; }
+      localStorage.setItem("vynk_name", participantName);
+      router.push(`/room/${roomId}`);
     };
     const onError = (data: { message: string; roomId?: string }) => { if (data.roomId && data.roomId !== roomId) return; setError(data.message); setLoading(null); cleanup(); };
     const cleanup = () => {
@@ -128,7 +130,8 @@ export default function Home() {
     const onResult = (data: { roomId: string; allowed: boolean; message: string }) => {
       if (data.roomId !== roomId) return;
       cleanup(); setLoading(null); setPendingRoomId(null); setStatus(null);
-      if (!data.allowed) setError(data.message);
+      if (!data.allowed) { setError(data.message); return; }
+      router.push(`/room/${roomId}`);
     };
     const onError = (data: { message: string; roomId?: string }) => { if (data.roomId && data.roomId !== roomId) return; setError(data.message); setLoading(null); setPendingRoomId(null); cleanup(); };
     const cleanup = () => {

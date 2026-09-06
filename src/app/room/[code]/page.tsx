@@ -161,7 +161,11 @@ export default function RoomPage() {
     };
     const onJoinSettingsUpdated = (data: { roomId: string; enabled: boolean }) => { if (data.roomId === roomId) setJoinRequestNotificationsEnabled(data.enabled); };
     const onJoinPending = (data: { roomId: string }) => { if (data.roomId === roomId) updateJoinPhase("pending"); };
-    const onJoinResult = (data: { roomId: string; allowed: boolean; message: string }) => { if (data.roomId !== roomId) return; if (!data.allowed) { setError(data.message); updateJoinPhase("rejected"); } };
+    const onJoinResult = (data: { roomId: string; allowed: boolean; message: string }) => {
+      if (data.roomId !== roomId) return;
+      if (!data.allowed) { setError(data.message); updateJoinPhase("rejected"); return; }
+      if (joinPhaseRef.current !== "joined") socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() });
+    };
     const onScreenPermission = (data: { roomId: string; participantId: string; allowed: boolean }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId || data.participantId !== socket.id) return;
       const wasRequest = screenRequestSentRef.current;

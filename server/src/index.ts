@@ -212,6 +212,7 @@ io.on("connection", (socket) => {
       return;
     }
     target.join(roomId);
+    target.emit(EVENTS.ROOM_JOIN_RESULT, { roomId, allowed: true, message: "Entrada aprovada pelo host." });
     target.emit(EVENTS.ROOM_JOINED, joinedPayload(room, participantId));
     emitParticipants(roomId);
   });
