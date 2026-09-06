@@ -114,6 +114,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-participant { min-width: 0; display: grid; grid-template-columns: 31px minmax(0, 1fr) auto; align-items: center; gap: 9px; }
 .vynk-avatar { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 9px; color: #e8ecf1; background: #303743; font-size: 12px; font-weight: 700; }
 .vynk-avatar.mine { color: #1d0e0a; background: var(--accent); }
+.vynk-avatar.speaking { color: #102219; background: var(--green); box-shadow: 0 0 0 3px rgba(109,224,161,.18), 0 0 18px rgba(109,224,161,.42); }
+.vynk-participant.speaking .vynk-participant-name > span { color: #effff5; }
 .vynk-participant-name { min-width: 0; display: flex; flex-direction: column; gap: 4px; color: #e2e6eb; font-size: 13px; font-weight: 560; }
 .vynk-participant-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vynk-participant-name em { margin-left: 6px; color: var(--muted); font-size: 10px; font-style: normal; font-weight: 450; }
@@ -136,6 +138,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-join-settings input { width: 13px; height: 13px; flex: 0 0 auto; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .vynk-presence { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .vynk-presence.online .vynk-status-dot { background: var(--green); }
+.vynk-participant.speaking .vynk-presence { color: var(--green); }
+.vynk-participant.speaking .vynk-presence .vynk-status-dot { box-shadow: 0 0 0 3px rgba(109,224,161,.12), 0 0 10px rgba(109,224,161,.55); }
 .vynk-presence.reconnecting .vynk-status-dot { background: var(--amber); }
 .vynk-empty-row { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
 .vynk-skeleton { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); animation: vynk-pulse 1.2s ease-in-out infinite; }
