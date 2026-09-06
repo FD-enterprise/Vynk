@@ -176,21 +176,26 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   }, [setPeerState]);
 
   const createPeer = useCallback((peerId: string, mode: NegotiationMode, remoteIsHost: boolean) => {
-    if (!isRoomActive() || !iceServers) return null;
+    if (!isRoomActive() || !iceServers || typeof window === "undefined" || typeof window.RTCPeerConnection !== "function") return null;
     const existing = connections.current.get(peerId);
     if (existing) return existing;
 
     remotePeerIsHost.current.set(peerId, remoteIsHost);
-    const connection = new RTCPeerConnection({
-      iceServers,
-      iceCandidatePoolSize: 10,
-      ...(forceRelay ? { iceTransportPolicy: "relay" as const } : {}),
-    });
-    if (mode === "offer") {
-      connection.addTransceiver("video", { direction: "sendrecv" });
-      connection.addTransceiver("audio", { direction: "sendrecv" });
-      const microphoneTransceiver = connection.addTransceiver("audio", { direction: "sendrecv" });
-      microphoneTransceivers.current.set(peerId, microphoneTransceiver);
+    let connection: RTCPeerConnection;
+    try {
+      connection = new window.RTCPeerConnection({
+        iceServers,
+        iceCandidatePoolSize: 10,
+        ...(forceRelay ? { iceTransportPolicy: "relay" as const } : {}),
+      });
+      if (mode === "offer") {
+        connection.addTransceiver("video", { direction: "sendrecv" });
+        connection.addTransceiver("audio", { direction: "sendrecv" });
+        const microphoneTransceiver = connection.addTransceiver("audio", { direction: "sendrecv" });
+        microphoneTransceivers.current.set(peerId, microphoneTransceiver);
+      }
+    } catch {
+      return null;
     }
     connection.ontrack = (event) => {
       if (!isRoomActive() || connections.current.get(peerId) !== connection) {
@@ -297,10 +302,10 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     if (!socket || !roomId || !isRoomActive()) return;
     const connection = createPeer(peer.id, "offer", peer.isHost);
     if (!connection) return;
-    // A data channel gives the initial SDP a negotiated section without carrying media.
-    const controlChannel = connection.createDataChannel("vynk-control");
-    trackDataChannel(peer.id, controlChannel);
     try {
+      // A data channel gives the initial SDP a negotiated section without carrying media.
+      const controlChannel = connection.createDataChannel("vynk-control");
+      trackDataChannel(peer.id, controlChannel);
       const screenVideoTransceiver = connection.getTransceivers().find((candidate) => candidate.receiver.track.kind === "video");
       if (screenVideoTransceiver) await limitScreenVideoBitrate(screenVideoTransceiver.sender);
       for (const track of localScreenStream?.getTracks() ?? []) {
