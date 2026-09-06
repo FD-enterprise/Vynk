@@ -325,7 +325,7 @@ export default function RoomPage() {
   }, []);
 
   useEffect(() => {
-    if (!displayStream && document.fullscreenElement === stageRef.current) void document.exitFullscreen().catch(() => undefined);
+    if (!displayStream && document.fullscreenElement === stageRef.current && typeof document.exitFullscreen === "function") void document.exitFullscreen().catch(() => undefined);
   }, [displayStream]);
 
   useEffect(() => {
@@ -361,7 +361,7 @@ export default function RoomPage() {
     closeAllConnections();
     if (socket?.connected) socket.emit(EVENTS.ROOM_LEAVE, { roomId });
     clearRoomState();
-    if (document.fullscreenElement === stageRef.current) void document.exitFullscreen().catch(() => undefined);
+    if (document.fullscreenElement === stageRef.current && typeof document.exitFullscreen === "function") void document.exitFullscreen().catch(() => undefined);
   }, [clearRoomState, closeAllConnections, roomId, roomLifecycle, roomToken, socket, stopMicrophone, stopScreen]);
 
   useEffect(() => {
@@ -418,10 +418,15 @@ export default function RoomPage() {
   const handleFullscreen = async () => {
     if (!stageRef.current || !displayStream) return;
     try {
-      if (document.fullscreenElement === stageRef.current) await document.exitFullscreen();
-      else await stageRef.current.requestFullscreen();
+      if (document.fullscreenElement === stageRef.current) {
+        if (typeof document.exitFullscreen !== "function") throw new Error("Fullscreen exit is unavailable");
+        await document.exitFullscreen();
+      } else {
+        if (typeof stageRef.current.requestFullscreen !== "function") throw new Error("Fullscreen is unavailable");
+        await stageRef.current.requestFullscreen();
+      }
     } catch {
-      setError("Não foi possível abrir a transmissão em tela cheia. Verifique as permissões do navegador.");
+      setError("A tela cheia não está disponível neste navegador.");
     }
   };
   const handleMicrophone = async () => {
@@ -481,6 +486,7 @@ export default function RoomPage() {
   const connectionLabel = connState === "connected" ? "Conectado" : connState === "reconnecting" ? "Reconectando" : connState === "error" ? "Sem conexão" : "Conectando";
   const connectionTone = connState === "connected" ? "online" : connState === "reconnecting" ? "warning" : "offline";
   const screenSurfaceLabel = screen.surface === "monitor" ? "Tela inteira" : screen.surface === "window" ? "Janela" : screen.surface === "browser" ? "Aba do navegador" : "Tela selecionada";
+  const supportsFullscreen = typeof document !== "undefined" && typeof HTMLElement.prototype.requestFullscreen === "function";
 
   if (needsName) {
     return (
@@ -544,7 +550,7 @@ export default function RoomPage() {
             {!displayStream && <div className="vynk-stage-empty"><div className="vynk-stage-icon"><Icon name="monitor" size={28} /></div><span className="vynk-eyebrow">{isHost ? "VOCÊ É O HOST" : "SALA EM ESPERA"}</span><h2>{isHost ? "Compartilhe seu palco" : "Aguardando transmissão"}</h2><p>{isHost ? "O navegador abrirá o seletor obrigatório. Para mostrar tudo, escolha Tela inteira e confirme em Compartilhar." : canShareScreen ? "Você recebeu permissão para transmitir." : "Peça permissão ao host para transmitir sua tela."}</p>{canShareScreen ? <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className="vynk-stage-action"><Icon name="monitor" size={16} />{screen.state === "requesting-permission" ? "Escolha uma tela…" : "Escolher tela para compartilhar"}</button> : <button onClick={handleRequestScreen} disabled={screenRequestSent || !socket?.connected} className="vynk-stage-action"><Icon name="monitor" size={16} />{screenRequestSent ? "Pedido enviado" : "Pedir permissão para transmitir"}</button>}{screen.error && <p className="vynk-inline-error">{screen.error}</p>}</div>}
             {displayStream && <div className="vynk-live-badge"><span className="vynk-status-dot" />{isScreenSharer ? "Sua tela" : "Ao vivo"}</div>}
             {isHost && <span className="vynk-host-badge">HOST</span>}
-            {displayStream && <button onClick={handleFullscreen} className="vynk-fullscreen-button" aria-pressed={isFullscreen} aria-label={isFullscreen ? "Sair da tela cheia" : "Abrir transmissão em tela cheia"} title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}><Icon name={isFullscreen ? "shrink" : "expand"} size={17} /><span>{isFullscreen ? "Sair da tela cheia" : "Tela cheia"}</span></button>}
+            {displayStream && supportsFullscreen && <button onClick={handleFullscreen} className="vynk-fullscreen-button" aria-pressed={isFullscreen} aria-label={isFullscreen ? "Sair da tela cheia" : "Abrir transmissão em tela cheia"} title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}><Icon name={isFullscreen ? "shrink" : "expand"} size={17} /><span>{isFullscreen ? "Sair da tela cheia" : "Tela cheia"}</span></button>}
           </div>
           <div className="vynk-control-panel">
              <div className="vynk-control-group">
