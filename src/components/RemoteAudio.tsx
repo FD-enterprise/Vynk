@@ -11,10 +11,11 @@ export function getRemoteAudioPlaybackState(cause: unknown): RemoteAudioPlayback
 type Props = {
   peerId: string;
   stream: MediaStream;
+  volume: number;
   onPlaybackStateChange: (peerId: string, state: RemoteAudioPlaybackState) => void;
 };
 
-export function RemoteAudio({ peerId, stream, onPlaybackStateChange }: Props) {
+export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -26,6 +27,11 @@ export function RemoteAudio({ peerId, stream, onPlaybackStateChange }: Props) {
       audio.srcObject = null;
     };
   }, [stream]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) audio.volume = Math.min(1, Math.max(0, volume));
+  }, [volume]);
 
   useEffect(() => {
     const audio = audioRef.current;

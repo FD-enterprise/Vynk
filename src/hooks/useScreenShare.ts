@@ -22,6 +22,13 @@ const DISPLAY_MEDIA_PREFERENCES: DisplayMediaPreferences = {
   systemAudio: "include",
 };
 
+const SCREEN_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  autoGainControl: false,
+  echoCancellation: false,
+  noiseSuppression: false,
+  channelCount: { ideal: 2, max: 2 },
+};
+
 export function useScreenShare(onStopped?: () => void) {
   const [state, setState] = useState<ScreenShareState>("not-sharing");
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -57,6 +64,16 @@ export function useScreenShare(onStopped?: () => void) {
       if (!videoTrack) {
         current.getTracks().forEach((track) => track.stop());
         throw new Error("Nenhuma faixa de vídeo foi disponibilizada.");
+      }
+      videoTrack.contentHint = "detail";
+      const audioTrack = current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.contentHint = "music";
+        try { await audioTrack.applyConstraints(SCREEN_AUDIO_CONSTRAINTS); } catch { /* O navegador pode não aceitar essas restrições para áudio do sistema. */ }
+      }
+      if (!mounted.current || !captureRequest.current.isCurrent(request)) {
+        current.getTracks().forEach((track) => track.stop());
+        return null;
       }
       activeStream.current = current;
       videoTrack.onended = () => stopStream(current);

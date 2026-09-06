@@ -30,7 +30,8 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19
 const signalingUrl = process.env.NEXT_PUBLIC_SIGNALING_URL || "https://vynk-mwxh.onrender.com";
 const forceRelay = process.env.NEXT_PUBLIC_FORCE_TURN === "true";
 
-const SCREEN_VIDEO_MAX_BITRATE = 4_000_000;
+const SCREEN_VIDEO_MAX_BITRATE = 3_500_000;
+const SCREEN_AUDIO_MAX_BITRATE = 128_000;
 
 async function limitScreenVideoBitrate(sender: RTCRtpSender): Promise<void> {
   try {
@@ -38,10 +39,24 @@ async function limitScreenVideoBitrate(sender: RTCRtpSender): Promise<void> {
     const encodings = parameters.encodings.length > 0 ? parameters.encodings : [{}];
     await sender.setParameters({
       ...parameters,
+      degradationPreference: "maintain-resolution",
       encodings: encodings.map((encoding) => ({ ...encoding, maxBitrate: SCREEN_VIDEO_MAX_BITRATE })),
     });
   } catch {
     // Alguns navegadores só aceitam setParameters depois que o track foi anexado.
+  }
+}
+
+async function limitScreenAudioBitrate(sender: RTCRtpSender): Promise<void> {
+  try {
+    const parameters = sender.getParameters();
+    const encodings = parameters.encodings.length > 0 ? parameters.encodings : [{}];
+    await sender.setParameters({
+      ...parameters,
+      encodings: encodings.map((encoding) => ({ ...encoding, maxBitrate: SCREEN_AUDIO_MAX_BITRATE })),
+    });
+  } catch {
+    // Alguns navegadores não permitem alterar o bitrate do áudio depois da negociação.
   }
 }
 
@@ -293,6 +308,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         if (transceiver) {
           await transceiver.sender.replaceTrack(track);
           if (track.kind === "video") await limitScreenVideoBitrate(transceiver.sender);
+          if (track.kind === "audio") await limitScreenAudioBitrate(transceiver.sender);
         }
       }
       const microphoneTrack = localMicrophoneStream?.getAudioTracks()[0] ?? null;
@@ -337,6 +353,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
           if (transceiver.direction === "recvonly" || transceiver.direction === "inactive") transceiver.direction = "sendrecv";
           await transceiver.sender.replaceTrack(desiredByKind.get(kind) ?? null);
           if (kind === "video") await limitScreenVideoBitrate(transceiver.sender);
+          if (kind === "audio") await limitScreenAudioBitrate(transceiver.sender);
         } catch { setPeerFailedIfCurrent(peerId, connection); }
       }
     }
@@ -344,7 +361,9 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     for (const track of desiredTracks) {
       const hasSender = connection.getSenders().some((sender) => sender.track?.id === track.id);
       if (!hasSender && !connection.getTransceivers().some((transceiver) => transceiver.receiver.track.kind === track.kind)) {
-        connection.addTrack(track, localScreenStream!);
+        const sender = connection.addTrack(track, localScreenStream!);
+        if (track.kind === "video") await limitScreenVideoBitrate(sender);
+        if (track.kind === "audio") await limitScreenAudioBitrate(sender);
       }
     }
   }, [isRoomActive, localScreenStream, setPeerFailedIfCurrent]);
@@ -371,6 +390,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
             const screenTrack = localScreenStream?.getTracks().find((track) => track.kind === kind);
             await transceiver.sender.replaceTrack(screenTrack ?? null);
             if (kind === "video") await limitScreenVideoBitrate(transceiver.sender);
+            if (kind === "audio") await limitScreenAudioBitrate(transceiver.sender);
           }
         }
         if (microphoneTransceiver) {

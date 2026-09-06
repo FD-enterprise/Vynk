@@ -94,6 +94,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-control-button.active { border-color: rgba(109,224,161,.34); background: rgba(109,224,161,.1); color: var(--green); }
 .vynk-control-button.audio { border-color: rgba(244,200,107,.34); background: rgba(244,200,107,.1); color: var(--amber); }
 .vynk-control-button:disabled { opacity: .58; }
+.vynk-volume-controls { display: flex; align-items: center; gap: 13px; }
+.vynk-volume-control { width: 132px; display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 10px; }
+.vynk-volume-label { display: flex; align-items: center; gap: 5px; }
+.vynk-volume-label svg { color: var(--soft); flex: 0 0 auto; }
+.vynk-volume-label output { margin-left: auto; color: var(--soft); font-family: var(--font-geist-mono), monospace; font-size: 9px; }
+.vynk-volume-control input[type="range"] { width: 100%; height: 4px; accent-color: var(--accent); cursor: pointer; }
 .vynk-media-status { min-width: max-content; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .vynk-inline-alert { padding: 9px 12px; border: 1px solid rgba(255,107,74,.3); border-radius: 9px; background: rgba(114,35,28,.22); color: #ffb4a6; font-size: 12px; }
 .vynk-inline-error { margin-top: 14px !important; color: #ff9b89 !important; font-size: 12px !important; }
@@ -237,6 +243,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   .vynk-control-group { width: 100%; }
   .vynk-control-button { flex: 1; justify-content: center; min-width: 0; }
   .vynk-control-button span { overflow: hidden; text-overflow: ellipsis; }
+  .vynk-volume-controls { width: 100%; gap: 12px; }
+  .vynk-volume-control { flex: 1; width: auto; }
   .vynk-media-status { min-height: 22px; }
   .vynk-sidebar { min-height: 600px; border-radius: 13px; }
   .vynk-gate { padding: 14px; }
