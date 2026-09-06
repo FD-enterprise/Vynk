@@ -17,6 +17,7 @@ export default function RoomError({ error, retry }: { error: Error & { digest?: 
         <span className="vynk-eyebrow">SALA INDISPONÍVEL</span>
         <h1>Não foi possível carregar a sala.</h1>
         <p>A conexão pode ter sido interrompida. Tente carregar novamente.</p>
+        <code className="vynk-room-error-detail">{error.message || error.digest || "Erro desconhecido"}</code>
         <button onClick={retry} className="vynk-primary-button">Tentar novamente</button>
         <button onClick={() => router.push("/")} className="vynk-name-modal-cancel">Voltar ao início</button>
       </div>

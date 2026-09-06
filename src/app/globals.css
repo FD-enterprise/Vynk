@@ -184,6 +184,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-primary-button:hover:not(:disabled) { background: var(--accent-strong); transform: translateY(-1px); }
 .vynk-primary-button:disabled { opacity: .4; }
 .vynk-gate-note { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 17px; color: #77818e; font-size: 10px; }
+.vynk-room-error-detail { display: block; overflow-wrap: anywhere; margin: -14px 0 20px; padding: 9px; border-radius: 7px; background: #101318; color: #ffb3a5; font-size: 10px; line-height: 1.45; }
 
 .vynk-home { min-height: 100svh; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #0e1014; color: var(--foreground); }
 .vynk-home-grid { position: absolute; inset: 0; opacity: .28; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 60px 60px; mask-image: linear-gradient(to right, #000, transparent 88%); }

@@ -36,11 +36,18 @@ export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: P
     const audio = audioRef.current;
     const context = getRemoteAudioContext();
     if (!audio || !context) return;
-    const source = context.createMediaElementSource(audio);
-    const gain = context.createGain();
-    source.connect(gain).connect(context.destination);
-    gainRef.current = gain;
-    audio.volume = 1;
+    let source: MediaElementAudioSourceNode;
+    let gain: GainNode;
+    try {
+      source = context.createMediaElementSource(audio);
+      gain = context.createGain();
+      source.connect(gain).connect(context.destination);
+      gainRef.current = gain;
+      audio.volume = 1;
+    } catch {
+      // Safari móvel pode expor Web Audio sem aceitar MediaStream em MediaElementSource.
+      return;
+    }
     return () => {
       source.disconnect();
       gain.disconnect();
@@ -51,12 +58,17 @@ export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: P
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.srcObject = stream;
+    try {
+      audio.srcObject = stream;
+    } catch {
+      onPlaybackStateChange(peerId, "error");
+      return;
+    }
     return () => {
       audio.pause();
       audio.srcObject = null;
     };
-  }, [stream]);
+  }, [onPlaybackStateChange, peerId, stream]);
 
   useEffect(() => {
     const audio = audioRef.current;

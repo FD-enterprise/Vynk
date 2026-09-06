@@ -206,7 +206,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         let microphoneTransceiver = microphoneTransceivers.current.get(peerId);
         if (!microphoneTransceiver) {
           const audioTransceivers = connection.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === "audio");
-          microphoneTransceiver = audioTransceivers.at(-1);
+          microphoneTransceiver = audioTransceivers[audioTransceivers.length - 1];
           if (microphoneTransceiver) microphoneTransceivers.current.set(peerId, microphoneTransceiver);
         }
         if (event.transceiver === microphoneTransceiver) {
@@ -386,7 +386,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         await connection.setRemoteDescription(new RTCSessionDescription(data.sdp));
         if (!isRoomActive() || connections.current.get(data.fromId) !== connection) return;
         const audioTransceivers = connection.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === "audio");
-        const microphoneTransceiver = audioTransceivers.at(-1);
+        const microphoneTransceiver = audioTransceivers[audioTransceivers.length - 1];
         for (const transceiver of connection.getTransceivers()) {
           if (transceiver === microphoneTransceiver) continue;
           const kind = transceiver.receiver.track.kind;
