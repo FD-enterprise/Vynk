@@ -212,7 +212,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-home-secondary:hover:not(:disabled) { border-color: #697483; background: #252b34; transform: translateY(-1px); }
 .vynk-home-primary:disabled, .vynk-home-secondary:disabled { opacity: .4; cursor: not-allowed; }
 .vynk-home-primary span, .vynk-home-secondary span { font-size: 17px; font-weight: 400; }
-.vynk-room-list-button { margin-top: 9px; }
+.vynk-home-identity { padding-bottom: 20px; }
+.vynk-home-create .vynk-home-primary { margin-top: 0; min-height: 46px; }
+.vynk-home-create p { margin: 9px 0 0; color: var(--muted); font-size: 11px; text-align: center; line-height: 1.5; }
+.vynk-home-code-entry { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--line); }
+.vynk-home-code-entry > label { display: block; margin-bottom: 10px; color: var(--soft); font-size: 12px; font-weight: 600; }
+.vynk-home-code-row { display: flex; align-items: stretch; gap: 8px; }
+.vynk-home-code-row input { width: 100%; min-width: 0; height: 43px; padding: 0 12px; border: 1px solid #3a424e; border-radius: 8px; background: #20252d; color: var(--foreground); font-family: var(--font-geist-mono), monospace; font-size: 14px; letter-spacing: .16em; }
+.vynk-home-code-row input::placeholder { color: #77818e; }
+.vynk-home-code-row .vynk-home-secondary { width: auto; flex: 0 0 auto; margin: 0; gap: 12px; }
+.vynk-home-discover { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+.vynk-home-discover strong { color: var(--soft); font-size: 12px; font-weight: 600; }
+.vynk-home-discover p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.vynk-home-discover .vynk-room-list-button { width: auto; min-height: 36px; margin: 0; gap: 10px; padding: 0; border: 0; color: var(--accent-strong); font-size: 11px; }
+.vynk-home-discover .vynk-room-list-button:hover:not(:disabled) { background: transparent; color: #ffc0b3; transform: none; }
 .vynk-room-directory { margin-top: 18px; padding-top: 17px; border-top: 1px solid #303742; }
 .vynk-room-directory-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .vynk-room-directory-heading h3 { margin: 7px 0 0; color: #f4f6f8; font-size: 17px; letter-spacing: -.035em; }

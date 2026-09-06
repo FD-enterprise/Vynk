@@ -133,17 +133,33 @@ export default function Home() {
       <header className="vynk-home-top"><div className="vynk-brand"><span className="vynk-brand-mark">v</span><span>vynk</span></div><span className="vynk-home-top-note">P2P · ATÉ 5 PESSOAS</span></header>
       <main className="vynk-home-main">
         <section className="vynk-home-intro"><span className="vynk-eyebrow">SALA PRIVADA, SEM RUÍDO</span><h1>Conecte-se.<br /><em>Compartilhe.</em></h1><p>Uma sala leve para conversar, apresentar uma tela e seguir o fluxo — direto no navegador.</p><div className="vynk-home-features"><span>◉ Voz em tempo real</span><span>◉ Tela compartilhada</span><span>◉ Chat efêmero</span></div></section>
-        <section className="vynk-home-card" aria-labelledby="home-card-title"><div className="vynk-home-card-top"><span className="vynk-eyebrow">COMEÇAR AGORA</span><span className="vynk-home-secure">⌁ privado por padrão</span></div><h2 id="home-card-title">Entre na sua sala</h2><p className="vynk-home-card-copy">Crie uma nova sala ou use o código que seu amigo enviou.</p>
-          <div className="vynk-home-field"><label htmlFor="name">Como devemos chamar você?</label><input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" maxLength={24} /></div>
-           <button onClick={handleCreate} disabled={loading !== null} className="vynk-home-primary">{loading === "create" ? "Criando sala…" : "Criar uma sala"}<span>↗</span></button>
-           <button onClick={handleListRooms} disabled={loading !== null} className="vynk-home-secondary vynk-room-list-button">{loading === "list" ? "Buscando salas…" : "Salas criadas"}<span>⌕</span></button>
-          <div className="vynk-home-separator"><span>ou entre com código</span></div>
-          <div className="vynk-home-field"><label htmlFor="code">Código da sala</label><input id="code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="K7M4PX" maxLength={6} /></div>
-           <button onClick={handleJoin} disabled={loading !== null} className="vynk-home-secondary">{loading === "join" ? "Entrando na sala…" : "Entrar com código"}<span>→</span></button>
+        <section className="vynk-home-card" aria-labelledby="home-card-title">
+          <div className="vynk-home-card-top"><span className="vynk-eyebrow">SEU PONTO DE ENCONTRO</span><span className="vynk-home-secure">SEM CONTA</span></div>
+          <h2 id="home-card-title">Vamos nos conectar?</h2>
+          <p className="vynk-home-card-copy">Escolha seu nome e encontre sua turma.</p>
+          <div className="vynk-home-field vynk-home-identity">
+            <label htmlFor="name">Seu nome na sala</label>
+            <input id="name" autoComplete="nickname" value={name} onChange={(e) => setName(e.target.value)} placeholder="Como você quer aparecer?" maxLength={24} />
+          </div>
+          <div className="vynk-home-create">
+            <button onClick={handleCreate} disabled={loading !== null} className="vynk-home-primary">{loading === "create" ? "Criando sala…" : "Criar uma sala"}<span aria-hidden="true">↗</span></button>
+            <p>Comece uma conversa e convide seus amigos.</p>
+          </div>
+          <form className="vynk-home-code-entry" onSubmit={(event) => { event.preventDefault(); if (loading === null) handleJoin(); }}>
+            <label htmlFor="code">Já tem um código?</label>
+            <div className="vynk-home-code-row">
+              <input id="code" aria-label="Código da sala" autoComplete="off" autoCapitalize="characters" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="K7M4PX" maxLength={6} />
+              <button type="submit" disabled={loading !== null} className="vynk-home-secondary">{loading === "join" ? "Entrando…" : "Entrar"}<span aria-hidden="true">→</span></button>
+            </div>
+          </form>
+          <div className="vynk-home-discover">
+            <div><strong>Encontre uma conversa</strong><p>Explore as salas e peça para entrar.</p></div>
+            <button onClick={handleListRooms} disabled={loading !== null} aria-expanded={showRooms} className="vynk-home-secondary vynk-room-list-button">{loading === "list" ? "Buscando…" : "Salas criadas"}<span aria-hidden="true">→</span></button>
+          </div>
            {showRooms && <section className="vynk-room-directory" aria-labelledby="room-directory-title"><div className="vynk-room-directory-heading"><div><span className="vynk-eyebrow">SALAS DISPONÍVEIS</span><h3 id="room-directory-title">Escolha uma sala</h3></div><button onClick={handleListRooms} disabled={loading !== null} className="vynk-room-refresh" aria-label="Atualizar lista de salas">↻</button></div>{rooms.length === 0 ? <p className="vynk-room-empty">Nenhuma sala criada no momento.</p> : <div className="vynk-room-list">{rooms.map((room) => { const full = room.participantCount >= room.maxParticipants; const pending = pendingRoomId === room.id; return <article key={room.id} className="vynk-room-item"><div><strong>{room.id}</strong><span>{room.hostName} · {room.participantCount}/{room.maxParticipants} pessoas</span></div><button onClick={() => handleRequestJoin(room.id)} disabled={loading !== null || full} className="vynk-room-join-button">{pending && loading === "pending" ? "Aguardando…" : full ? "Sala cheia" : "Pedir entrada"}</button></article>; })}</div>}</section>}
            {status && <p role="status" className="vynk-home-status">{status}</p>}
            {error && <p role="alert" className="vynk-home-error">{error}</p>}
-          <p className="vynk-home-footnote">Sem conta. Sem gravação. Seu nome fica só nesta sala.</p>
+          <p className="vynk-home-footnote">Voz, tela e conversa. Sem gravação.</p>
         </section>
       </main>
       <footer className="vynk-home-footer"><span>vynk / MVP 0.1</span><span>Feito para conversas que precisam acontecer.</span></footer>
