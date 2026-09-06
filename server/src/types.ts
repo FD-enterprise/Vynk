@@ -20,7 +20,10 @@ export type Room = {
   screenSharing: boolean;
   screenSharerId: string | null;
   presenceTimers: Map<string, NodeJS.Timeout>;
+  joinRequests: Map<string, JoinRequest>;
 };
+
+export type JoinRequest = { socketId: string; sessionId: string; name: string; requestedAt: number };
 
 export type ChatMessage = {
   id: string;

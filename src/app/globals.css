@@ -129,6 +129,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-screen-request { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; padding: 10px; border: 1px solid rgba(244,200,107,.3); border-radius: 9px; background: rgba(244,200,107,.08); color: var(--muted); font-size: 10px; line-height: 1.35; }
 .vynk-screen-request strong { color: #f5d890; font-size: 11px; }
 .vynk-screen-request > div { display: flex; gap: 6px; margin-top: 3px; }
+.vynk-join-request { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; padding: 10px; border: 1px solid rgba(109,224,161,.3); border-radius: 9px; background: rgba(109,224,161,.08); color: var(--muted); font-size: 10px; line-height: 1.35; }
+.vynk-join-request strong { color: var(--green); font-size: 11px; }
+.vynk-join-request > div { display: flex; gap: 6px; margin-top: 3px; }
 .vynk-presence { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .vynk-presence.online .vynk-status-dot { background: var(--green); }
 .vynk-presence.reconnecting .vynk-status-dot { background: var(--amber); }
@@ -209,6 +212,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-home-secondary:hover:not(:disabled) { border-color: #697483; background: #252b34; transform: translateY(-1px); }
 .vynk-home-primary:disabled, .vynk-home-secondary:disabled { opacity: .4; cursor: not-allowed; }
 .vynk-home-primary span, .vynk-home-secondary span { font-size: 17px; font-weight: 400; }
+.vynk-room-list-button { margin-top: 9px; }
+.vynk-room-directory { margin-top: 18px; padding-top: 17px; border-top: 1px solid #303742; }
+.vynk-room-directory-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vynk-room-directory-heading h3 { margin: 7px 0 0; color: #f4f6f8; font-size: 17px; letter-spacing: -.035em; }
+.vynk-room-refresh { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #3a424e; border-radius: 8px; color: var(--soft); background: #20252d; font-size: 18px; }
+.vynk-room-refresh:hover:not(:disabled) { border-color: #697483; color: #fff; }
+.vynk-room-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.vynk-room-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid #303742; border-radius: 9px; background: #1d222a; }
+.vynk-room-item > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.vynk-room-item strong { color: #f0f3f6; font-family: var(--font-geist-mono), monospace; font-size: 12px; letter-spacing: .1em; }
+.vynk-room-item span { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.vynk-room-join-button { flex: 0 0 auto; min-height: 32px; padding: 0 9px; border: 1px solid rgba(255,107,74,.34); border-radius: 7px; color: #ffb6a7; background: rgba(255,107,74,.08); font-size: 10px; font-weight: 700; }
+.vynk-room-join-button:hover:not(:disabled) { border-color: var(--accent); background: rgba(255,107,74,.16); }
+.vynk-room-join-button:disabled { cursor: not-allowed; opacity: .45; }
+.vynk-room-empty, .vynk-home-status { margin: 14px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.vynk-home-status { color: var(--amber); }
 .vynk-home-separator { display: flex; align-items: center; gap: 9px; margin: 22px 0 8px; color: #697481; font-size: 10px; }
 .vynk-home-separator::before, .vynk-home-separator::after { content: ""; height: 1px; flex: 1; background: #303742; }
 .vynk-home-error { margin: 13px 0 0; padding: 9px 10px; border: 1px solid rgba(255,107,74,.4); border-radius: 7px; background: rgba(114,35,28,.23); color: #ffb3a5; font-size: 11px; }

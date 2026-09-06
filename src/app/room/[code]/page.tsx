@@ -12,6 +12,7 @@ import { useMicrophone } from "@/hooks/useMicrophone";
 import { getRemoteAudioPlaybackState, RemoteAudio, resumeRemoteAudioContext, type RemoteAudioPlaybackState } from "@/components/RemoteAudio";
 
 type IconName = "arrow" | "check" | "copy" | "expand" | "lock" | "mic" | "monitor" | "send" | "shrink" | "users" | "volume" | "x";
+type JoinRequest = { roomId: string; participantId: string; participantName: string };
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, string[]> = {
@@ -44,6 +45,7 @@ export default function RoomPage() {
   const [isHost, setIsHost] = useState(false);
   const [screenSharerId, setScreenSharerId] = useState<string | null>(null);
   const [screenRequest, setScreenRequest] = useState<{ participantId: string; participantName: string } | null>(null);
+  const [joinRequest, setJoinRequest] = useState<JoinRequest | null>(null);
   const [screenRequestSent, setScreenRequestSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -112,6 +114,7 @@ export default function RoomPage() {
       setParticipants(data.participants);
       setChatMessages(data.chatMessages ?? []);
       setScreenSharerId(data.screenSharerId ?? null);
+      setJoinRequest(null);
       screenRequestSentRef.current = false;
       setScreenRequestSent(false);
       const me = data.participants.find((p) => p.id === socket.id);
@@ -140,6 +143,10 @@ export default function RoomPage() {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId || !isHostRef.current) return;
       setScreenRequest({ participantId: data.participantId, participantName: data.participantName });
     };
+    const onJoinRequest = (data: JoinRequest) => {
+      if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId || !isHostRef.current) return;
+      setJoinRequest(data);
+    };
     const onScreenPermission = (data: { roomId: string; participantId: string; allowed: boolean }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId || data.participantId !== socket.id) return;
       const wasRequest = screenRequestSentRef.current;
@@ -164,6 +171,7 @@ export default function RoomPage() {
     socket.on(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
     socket.on(EVENTS.ROOM_ERROR, onError);
     socket.on(EVENTS.SCREEN_REQUEST, onScreenRequest);
+    socket.on(EVENTS.ROOM_JOIN_REQUEST, onJoinRequest);
     socket.on(EVENTS.SCREEN_PERMISSION, onScreenPermission);
     socket.on(EVENTS.SCREEN_STARTED, onScreenStarted);
     socket.on(EVENTS.SCREEN_STOPPED, onScreenStopped);
@@ -179,6 +187,7 @@ export default function RoomPage() {
       socket.off(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off(EVENTS.SCREEN_REQUEST, onScreenRequest);
+      socket.off(EVENTS.ROOM_JOIN_REQUEST, onJoinRequest);
       socket.off(EVENTS.SCREEN_PERMISSION, onScreenPermission);
       socket.off(EVENTS.SCREEN_STARTED, onScreenStarted);
       socket.off(EVENTS.SCREEN_STOPPED, onScreenStopped);
@@ -306,6 +315,7 @@ export default function RoomPage() {
     setParticipants([]);
     setScreenSharerId(null);
     setScreenRequest(null);
+    setJoinRequest(null);
     screenRequestSentRef.current = false;
     setScreenRequestSent(false);
     setRemoteStreams(new Map());
@@ -350,6 +360,11 @@ export default function RoomPage() {
     if (!socket?.connected || !isHost) return;
     socket.emit(EVENTS.SCREEN_PERMISSION, { roomId, participantId, allowed });
     if (screenRequest?.participantId === participantId) setScreenRequest(null);
+  };
+  const handleJoinDecision = (participantId: string, allowed: boolean) => {
+    if (!socket?.connected || !isHost) return;
+    socket.emit(EVENTS.ROOM_JOIN_DECISION, { roomId, participantId, allowed });
+    setJoinRequest(null);
   };
   const handleShare = async () => {
     const me = participants.find((participant) => participant.id === socket?.id);
@@ -497,7 +512,8 @@ export default function RoomPage() {
         <aside className="vynk-sidebar">
           <section className="vynk-panel vynk-participants-panel" aria-labelledby="participants-title">
            <div className="vynk-panel-heading"><div><span className="vynk-eyebrow">NA SALA</span><h2 id="participants-title">Participantes</h2></div><span className="vynk-count-pill">{participantCount} / {MAX_PARTICIPANTS}</span></div>
-            {isHost && screenRequest && <div className="vynk-screen-request" role="status"><strong>{screenRequest.participantName} quer transmitir</strong><span>Autorize essa pessoa a compartilhar a tela.</span><div><button onClick={() => handleScreenPermission(screenRequest.participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleScreenPermission(screenRequest.participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
+             {isHost && joinRequest && <div className="vynk-join-request" role="status"><strong>{joinRequest.participantName} quer entrar</strong><span>Essa pessoa está aguardando sua permissão para entrar na sala.</span><div><button onClick={() => handleJoinDecision(joinRequest.participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleJoinDecision(joinRequest.participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
+             {isHost && screenRequest && <div className="vynk-screen-request" role="status"><strong>{screenRequest.participantName} quer transmitir</strong><span>Autorize essa pessoa a compartilhar a tela.</span><div><button onClick={() => handleScreenPermission(screenRequest.participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleScreenPermission(screenRequest.participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
             <ul className="vynk-participant-list">
               {participants.map((p) => (
                 <li key={p.id} className="vynk-participant">

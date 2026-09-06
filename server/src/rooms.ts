@@ -1,5 +1,6 @@
 import type { ChatMessage, Room, Participant } from "./types.js";
 import { MAX_PARTICIPANTS } from "./events.js";
+import type { PublicRoom } from "../../shared/events.js";
 
 const rooms = new Map<string, Room>();
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem I/O/0/1 ambíguos
@@ -14,7 +15,7 @@ export function generateRoomCode(): string {
 export function getRoom(roomId: string): Room | undefined { return rooms.get(roomId.toUpperCase()); }
 export function createRoom(hostId: string, hostName: string, sessionId: string): Room {
   const id = generateRoomCode();
-  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map() };
+  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map(), joinRequests: new Map() };
   const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, presence: "online" };
   room.participants.set(hostId, host);
   rooms.set(id, room);
@@ -97,4 +98,18 @@ export function getChatMessages(roomId: string): ChatMessage[] {
 export function getRoomBySocket(socketId: string): Room | undefined {
   for (const r of rooms.values()) if (r.participants.has(socketId)) return r;
   return undefined;
+}
+
+export function getPublicRooms(): PublicRoom[] {
+  return [...rooms.values()].map((room) => ({
+    id: room.id,
+    hostName: room.participants.get(room.hostId)?.name ?? "Host",
+    participantCount: [...room.participants.values()].filter((participant) => participant.presence !== "offline").length,
+    maxParticipants: MAX_PARTICIPANTS,
+    createdAt: room.createdAt,
+  }));
+}
+
+export function removeJoinRequestsBySocket(socketId: string): void {
+  for (const room of rooms.values()) room.joinRequests.delete(socketId);
 }

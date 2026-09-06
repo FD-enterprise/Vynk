@@ -1,6 +1,13 @@
 export const EVENTS = {
   ROOM_CREATE: "room:create",
+  ROOM_LIST_REQUEST: "room:list-request",
+  ROOM_LIST: "room:list",
   ROOM_JOIN: "room:join",
+  ROOM_JOIN_REQUEST: "room:join-request",
+  ROOM_JOIN_CANCEL: "room:join-cancel",
+  ROOM_JOIN_PENDING: "room:join-pending",
+  ROOM_JOIN_DECISION: "room:join-decision",
+  ROOM_JOIN_RESULT: "room:join-result",
   ROOM_LEAVE: "room:leave",
   ROOM_CREATED: "room:created",
   ROOM_JOINED: "room:joined",
@@ -32,8 +39,10 @@ export type Participant = { id: string; sessionId: string; name: string; isHost:
 export type ChatMessage = { id: string; roomId: string; authorId: string; authorSessionId?: string; authorName: string; text: string; timestamp: number };
 export type RoomCreatePayload = { name: string; sessionId: string };
 export type RoomJoinPayload = { roomId: string; name: string; sessionId: string };
+export type RoomJoinDecisionPayload = { roomId: string; participantId: string; allowed: boolean };
 export type RoomLeavePayload = { roomId: string };
 export type PeerSignalPayload = { roomId: string; targetId: string };
 export type ScreenStatePayload = { roomId: string };
 export type ScreenPermissionPayload = { roomId: string; participantId: string; allowed: boolean };
 export type MicrophoneStatePayload = { roomId: string; muted: boolean };
+export type PublicRoom = { id: string; hostName: string; participantCount: number; maxParticipants: number; createdAt: number };
