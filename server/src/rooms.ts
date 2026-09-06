@@ -14,8 +14,8 @@ export function generateRoomCode(): string {
 export function getRoom(roomId: string): Room | undefined { return rooms.get(roomId.toUpperCase()); }
 export function createRoom(hostId: string, hostName: string, sessionId: string): Room {
   const id = generateRoomCode();
-  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, presenceTimers: new Map() };
-  const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, joinedAt: Date.now(), micMuted: true, presence: "online" };
+  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map() };
+  const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, presence: "online" };
   room.participants.set(hostId, host);
   rooms.set(id, room);
   return room;
@@ -24,7 +24,7 @@ export function addParticipant(roomId: string, socketId: string, name: string, s
   const room = getRoom(roomId);
   if (!room) return null;
   if (room.participants.size >= MAX_PARTICIPANTS) return null;
-  const p: Participant = { id: socketId, sessionId, name, isHost: false, joinedAt: Date.now(), micMuted: true, presence: "online" };
+  const p: Participant = { id: socketId, sessionId, name, isHost: false, canShareScreen: false, joinedAt: Date.now(), micMuted: true, presence: "online" };
   room.participants.set(socketId, p);
   return p;
 }
@@ -38,7 +38,7 @@ export function removeParticipant(roomId: string, socketId: string): { room: Roo
   if (room.participants.size === 0) { rooms.delete(room.id); return { room: undefined, wasHost }; }
   if (wasHost) {
     const next = [...room.participants.values()].sort((a, b) => a.joinedAt - b.joinedAt)[0];
-    if (next) { next.isHost = true; room.hostId = next.id; }
+    if (next) { next.isHost = true; next.canShareScreen = true; room.hostId = next.id; }
   }
   return { room, wasHost };
 }

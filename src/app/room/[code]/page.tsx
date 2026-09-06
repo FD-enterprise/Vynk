@@ -42,6 +42,9 @@ export default function RoomPage() {
   const [participantSessionId] = useState(() => (typeof window !== "undefined" ? getParticipantSessionId() : ""));
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isHost, setIsHost] = useState(false);
+  const [screenSharerId, setScreenSharerId] = useState<string | null>(null);
+  const [screenRequest, setScreenRequest] = useState<{ participantId: string; participantName: string } | null>(null);
+  const [screenRequestSent, setScreenRequestSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
@@ -51,6 +54,8 @@ export default function RoomPage() {
   const [audioPlaybackStates, setAudioPlaybackStates] = useState<Map<string, RemoteAudioPlaybackState>>(new Map());
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
+  const isHostRef = useRef(false);
+  const screenRequestSentRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLLIElement>(null);
@@ -74,6 +79,14 @@ export default function RoomPage() {
   const microphoneMutedRef = useRef(microphone.muted);
 
   useEffect(() => {
+    isHostRef.current = isHost;
+  }, [isHost]);
+
+  useEffect(() => {
+    screenRequestSentRef.current = screenRequestSent;
+  }, [screenRequestSent]);
+
+  useEffect(() => {
     microphoneStateRef.current = microphone.state;
   }, [microphone.state]);
 
@@ -92,22 +105,48 @@ export default function RoomPage() {
     if (!socket || !roomId || needsName) return;
     const effectiveName = (name || promptName).trim();
     if (!effectiveName) return;
-    const onJoined = (data: { roomId: string; participants: Participant[]; chatMessages?: ChatMessage[] }) => {
+    const onJoined = (data: { roomId: string; participants: Participant[]; chatMessages?: ChatMessage[]; screenSharerId?: string | null }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
       setParticipants(data.participants);
       setChatMessages(data.chatMessages ?? []);
+      setScreenSharerId(data.screenSharerId ?? null);
+      screenRequestSentRef.current = false;
+      setScreenRequestSent(false);
       const me = data.participants.find((p) => p.id === socket.id);
       setIsHost(!!me?.isHost);
       socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted: microphoneStateRef.current !== "active" || microphoneMutedRef.current });
     };
     const onParticipants = (data: { roomId: string; participants: Participant[] }) => { if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return; setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
-    const onHostChanged = (data: { roomId: string; hostId: string }) => { if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return; setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId }))); setIsHost(data.hostId === socket.id); };
-    const onError = (data: { message: string; roomId?: string }) => { if (roomLifecycle.isActive(roomToken) && (!data.roomId || data.roomId === roomId)) setError(data.message); };
+    const onHostChanged = (data: { roomId: string; hostId: string }) => { if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return; setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId, canShareScreen: p.id === data.hostId ? true : p.canShareScreen }))); setIsHost(data.hostId === socket.id); };
+    const onError = (data: { message: string; roomId?: string }) => {
+      if (!roomLifecycle.isActive(roomToken) || (data.roomId && data.roomId !== roomId)) return;
+      setError(data.message);
+      if (data.message.includes("autorizou") || data.message.includes("Outra pessoa")) stopScreen();
+    };
     const onSocketDisconnect = () => { if (roomLifecycle.isActive(roomToken)) setParticipants([]); };
     const onScreenStopped = (data: { roomId: string }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
+      setScreenSharerId(null);
       setRemoteStreams(new Map());
       setAudioPlaybackStates((current) => new Map([...current].filter(([peerId]) => !peerId.endsWith(":screen"))));
+    };
+    const onScreenStarted = (data: { roomId: string; sharerId?: string; hostId?: string }) => {
+      if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
+      setScreenSharerId(data.sharerId ?? data.hostId ?? null);
+    };
+    const onScreenRequest = (data: { roomId: string; participantId: string; participantName: string }) => {
+      if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId || !isHostRef.current) return;
+      setScreenRequest({ participantId: data.participantId, participantName: data.participantName });
+    };
+    const onScreenPermission = (data: { roomId: string; participantId: string; allowed: boolean }) => {
+      if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId || data.participantId !== socket.id) return;
+      const wasRequest = screenRequestSentRef.current;
+      screenRequestSentRef.current = false;
+      setScreenRequestSent(false);
+      if (!data.allowed) {
+        stopScreen();
+        setError(wasRequest ? "O host recusou sua solicitação para transmitir." : "O host removeu sua permissão para transmitir.");
+      }
     };
     const onMicrophoneState = (data: { roomId: string; participantId: string; muted: boolean }) => {
       if (data.roomId !== roomId || !roomLifecycle.isActive(roomToken)) return;
@@ -122,6 +161,9 @@ export default function RoomPage() {
     socket.on(EVENTS.PRESENCE_UPDATE, onParticipants);
     socket.on(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
     socket.on(EVENTS.ROOM_ERROR, onError);
+    socket.on(EVENTS.SCREEN_REQUEST, onScreenRequest);
+    socket.on(EVENTS.SCREEN_PERMISSION, onScreenPermission);
+    socket.on(EVENTS.SCREEN_STARTED, onScreenStarted);
     socket.on(EVENTS.SCREEN_STOPPED, onScreenStopped);
     socket.on(EVENTS.MICROPHONE_STATE, onMicrophoneState);
     socket.on(EVENTS.CHAT_MESSAGE, onChatMessage);
@@ -134,13 +176,16 @@ export default function RoomPage() {
       socket.off(EVENTS.PRESENCE_UPDATE, onParticipants);
       socket.off(EVENTS.ROOM_HOST_CHANGED, onHostChanged);
       socket.off(EVENTS.ROOM_ERROR, onError);
+      socket.off(EVENTS.SCREEN_REQUEST, onScreenRequest);
+      socket.off(EVENTS.SCREEN_PERMISSION, onScreenPermission);
+      socket.off(EVENTS.SCREEN_STARTED, onScreenStarted);
       socket.off(EVENTS.SCREEN_STOPPED, onScreenStopped);
       socket.off(EVENTS.MICROPHONE_STATE, onMicrophoneState);
       socket.off(EVENTS.CHAT_MESSAGE, onChatMessage);
       socket.off("disconnect", onSocketDisconnect);
       socket.off("connect", emitJoin);
     };
-  }, [socket, roomId, roomLifecycle, roomToken, name, promptName, needsName]);
+  }, [socket, roomId, roomLifecycle, roomToken, name, promptName, needsName, stopScreen]);
 
   useEffect(() => {
     if (!socket) return;
@@ -211,7 +256,7 @@ export default function RoomPage() {
   });
 
   const remoteScreenStream = [...remoteStreams.values()].find((stream) => stream.getVideoTracks().some((track) => !track.muted && track.readyState === "live")) ?? null;
-  const displayStream = isHost ? screen.stream : remoteScreenStream;
+  const displayStream = screen.state === "sharing" ? screen.stream : remoteScreenStream;
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -243,6 +288,10 @@ export default function RoomPage() {
       video.srcObject = null;
     }
     setParticipants([]);
+    setScreenSharerId(null);
+    setScreenRequest(null);
+    screenRequestSentRef.current = false;
+    setScreenRequestSent(false);
     setRemoteStreams(new Map());
     setRemoteMicrophoneStreams(new Map());
     setAudioPlaybackStates(new Map());
@@ -274,10 +323,26 @@ export default function RoomPage() {
 
   const handleLeave = () => { releaseRoom(); router.push("/"); };
   const handleCopy = async () => { await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`); };
+  const handleRequestScreen = () => {
+    if (!socket?.connected || isHost || screenRequestSent) return;
+    socket.emit(EVENTS.SCREEN_REQUEST, { roomId });
+    screenRequestSentRef.current = true;
+    setScreenRequestSent(true);
+  };
+  const handleScreenPermission = (participantId: string, allowed: boolean) => {
+    if (!socket?.connected || !isHost) return;
+    socket.emit(EVENTS.SCREEN_PERMISSION, { roomId, participantId, allowed });
+    if (screenRequest?.participantId === participantId) setScreenRequest(null);
+  };
   const handleShare = async () => {
-    if (!isHost) return;
+    const me = participants.find((participant) => participant.id === socket?.id);
+    if (!isHost && !me?.canShareScreen) return;
     if (screen.state === "sharing") {
       screen.stop();
+      return;
+    }
+    if (screenSharerId && screenSharerId !== socket?.id) {
+      setError("Outra pessoa jÃ¡ estÃ¡ transmitindo a tela.");
       return;
     }
     const stream = await screen.start();
@@ -342,6 +407,9 @@ export default function RoomPage() {
   const myId = socket?.id ?? "";
   const failedPeerNames = participants.filter((participant) => participant.id !== myId && peerStates[participant.id] === "failed").map((participant) => participant.name);
   const participantCount = participants.filter((p) => p.presence !== "offline").length;
+  const me = participants.find((participant) => participant.id === myId);
+  const canShareScreen = isHost || !!me?.canShareScreen;
+  const isScreenSharer = screenSharerId === myId;
   const connectionLabel = connState === "connected" ? "Conectado" : connState === "reconnecting" ? "Reconectando" : connState === "error" ? "Sem conexão" : "Conectando";
   const connectionTone = connState === "connected" ? "online" : connState === "reconnecting" ? "warning" : "offline";
   const screenSurfaceLabel = screen.surface === "monitor" ? "Tela inteira" : screen.surface === "window" ? "Janela" : screen.surface === "browser" ? "Aba do navegador" : "Tela selecionada";
@@ -388,14 +456,14 @@ export default function RoomPage() {
           <div ref={stageRef} className="vynk-stage">
             <div className="vynk-stage-grid" aria-hidden="true" />
             {displayStream && <video ref={videoRef} autoPlay muted playsInline className="vynk-stage-video" />}
-            {!displayStream && <div className="vynk-stage-empty"><div className="vynk-stage-icon"><Icon name="monitor" size={28} /></div><span className="vynk-eyebrow">{isHost ? "VOCÊ É O HOST" : "SALA EM ESPERA"}</span><h2>{isHost ? "Compartilhe seu palco" : "Aguardando o host"}</h2><p>{isHost ? "O navegador abrirá o seletor obrigatório. Para mostrar tudo, escolha Tela inteira e confirme em Compartilhar." : "Assim que o host iniciar, a transmissão aparecerá aqui."}</p>{isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className="vynk-stage-action"><Icon name="monitor" size={16} />{screen.state === "requesting-permission" ? "Escolha uma tela…" : "Escolher tela para compartilhar"}</button>}{screen.error && <p className="vynk-inline-error">{screen.error}</p>}</div>}
-            {displayStream && <div className="vynk-live-badge"><span className="vynk-status-dot" />{isHost ? "Sua tela" : "Ao vivo"}</div>}
+            {!displayStream && <div className="vynk-stage-empty"><div className="vynk-stage-icon"><Icon name="monitor" size={28} /></div><span className="vynk-eyebrow">{isHost ? "VOCÊ É O HOST" : "SALA EM ESPERA"}</span><h2>{isHost ? "Compartilhe seu palco" : "Aguardando transmissão"}</h2><p>{isHost ? "O navegador abrirá o seletor obrigatório. Para mostrar tudo, escolha Tela inteira e confirme em Compartilhar." : canShareScreen ? "Você recebeu permissão para transmitir." : "Peça permissão ao host para transmitir sua tela."}</p>{canShareScreen ? <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className="vynk-stage-action"><Icon name="monitor" size={16} />{screen.state === "requesting-permission" ? "Escolha uma tela…" : "Escolher tela para compartilhar"}</button> : <button onClick={handleRequestScreen} disabled={screenRequestSent || !socket?.connected} className="vynk-stage-action"><Icon name="monitor" size={16} />{screenRequestSent ? "Pedido enviado" : "Pedir permissão para transmitir"}</button>}{screen.error && <p className="vynk-inline-error">{screen.error}</p>}</div>}
+            {displayStream && <div className="vynk-live-badge"><span className="vynk-status-dot" />{isScreenSharer ? "Sua tela" : "Ao vivo"}</div>}
             {isHost && <span className="vynk-host-badge">HOST</span>}
             {displayStream && <button onClick={handleFullscreen} className="vynk-fullscreen-button" aria-pressed={isFullscreen} aria-label={isFullscreen ? "Sair da tela cheia" : "Abrir transmissão em tela cheia"} title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}><Icon name={isFullscreen ? "shrink" : "expand"} size={17} /><span>{isFullscreen ? "Sair da tela cheia" : "Tela cheia"}</span></button>}
           </div>
           <div className="vynk-control-panel">
             <div className="vynk-control-group">
-              {isHost && <button onClick={handleShare} disabled={screen.state === "requesting-permission"} className={`vynk-control-button ${screen.state === "sharing" ? "danger" : "accent"}`} aria-label={screen.state === "sharing" ? "Parar compartilhamento de tela" : "Compartilhar tela"}><Icon name="monitor" size={17} /><span>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "Parar tela" : "Compartilhar tela"}</span></button>}
+              {canShareScreen ? <button onClick={handleShare} disabled={screen.state === "requesting-permission" || (!!screenSharerId && !isScreenSharer)} className={`vynk-control-button ${screen.state === "sharing" ? "danger" : "accent"}`} aria-label={screen.state === "sharing" ? "Parar compartilhamento de tela" : "Compartilhar tela"}><Icon name="monitor" size={17} /><span>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "Parar tela" : "Compartilhar tela"}</span></button> : <button onClick={handleRequestScreen} disabled={screenRequestSent || !socket?.connected} className="vynk-control-button muted"><Icon name="monitor" size={17} /><span>{screenRequestSent ? "Pedido enviado" : "Pedir para transmitir"}</span></button>}
               {microphone.state === "active" ? <button onClick={handleToggleMicrophone} aria-pressed={microphone.muted} className={`vynk-control-button ${microphone.muted ? "muted" : "active"}`}><span className={`vynk-mic-indicator ${microphone.muted ? "muted" : ""}`} aria-hidden="true"><Icon name="mic" size={17} /></span><span>{microphone.muted ? "Desmutar" : "Mutar"}</span></button> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="vynk-control-button muted"><span className="vynk-mic-indicator muted" aria-hidden="true"><Icon name="mic" size={17} /></span><span>{microphone.state === "requesting-permission" ? "Solicitando…" : microphone.state === "error" ? "Tentar microfone" : "Ativar microfone"}</span></button>}
               {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="vynk-control-button audio"><Icon name="volume" size={17} /><span>Liberar áudio</span></button></>}
             </div>
@@ -403,15 +471,16 @@ export default function RoomPage() {
           </div>
           {(microphone.error || hasAudioError) && <div className="vynk-inline-alert" role="alert">{microphone.error || "Não foi possível reproduzir o áudio de um participante. Tente liberar o áudio ou reconectar."}</div>}
           {failedPeerNames.length > 0 && <div className="vynk-inline-alert" role="status">A mídia de {failedPeerNames.join(", ")} não conectou. Fizemos uma nova tentativa; se continuar, peça para a pessoa atualizar a sala ou trocar de rede.</div>}
-          {isHost && <p className="vynk-stage-hint">Por segurança, a escolha final sempre acontece no navegador. Recomendado: selecione <strong>Tela inteira</strong> e habilite o áudio do sistema quando necessário.</p>}
+          {canShareScreen && <p className="vynk-stage-hint">Por segurança, a escolha final sempre acontece no navegador. Recomendado: selecione <strong>Tela inteira</strong> e habilite o áudio do sistema quando necessário.</p>}
         </section>
         <aside className="vynk-sidebar">
           <section className="vynk-panel vynk-participants-panel" aria-labelledby="participants-title">
-            <div className="vynk-panel-heading"><div><span className="vynk-eyebrow">NA SALA</span><h2 id="participants-title">Participantes</h2></div><span className="vynk-count-pill">{participantCount} / {MAX_PARTICIPANTS}</span></div>
+           <div className="vynk-panel-heading"><div><span className="vynk-eyebrow">NA SALA</span><h2 id="participants-title">Participantes</h2></div><span className="vynk-count-pill">{participantCount} / {MAX_PARTICIPANTS}</span></div>
+            {isHost && screenRequest && <div className="vynk-screen-request" role="status"><strong>{screenRequest.participantName} quer transmitir</strong><span>Autorize essa pessoa a compartilhar a tela.</span><div><button onClick={() => handleScreenPermission(screenRequest.participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleScreenPermission(screenRequest.participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
             <ul className="vynk-participant-list">
               {participants.map((p) => (
                 <li key={p.id} className="vynk-participant">
-                  <span className={`vynk-avatar ${p.id === myId ? "mine" : ""}`}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-name"><span>{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`}><span className="vynk-status-dot" />{p.micMuted ? "mutado" : "falando"}</span>
+                  <span className={`vynk-avatar ${p.id === myId ? "mine" : ""}`}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-name"><span>{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}{isHost && !p.isHost && p.presence === "online" && <button onClick={() => handleScreenPermission(p.id, !p.canShareScreen)} className="vynk-permission-button">{p.canShareScreen ? "Revogar tela" : "Permitir tela"}</button>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`}><span className="vynk-status-dot" />{p.micMuted ? "mutado" : "falando"}</span>
                 </li>
               ))}
               {participants.length === 0 && <li className="vynk-empty-row"><span className="vynk-skeleton" />Carregando participantes…</li>}

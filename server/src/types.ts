@@ -5,6 +5,7 @@ export type Participant = {
   sessionId: string;
   name: string;
   isHost: boolean;
+  canShareScreen: boolean;
   joinedAt: number;
   micMuted: boolean;
   presence: PresenceState;
@@ -17,6 +18,7 @@ export type Room = {
   chatMessages: ChatMessage[];
   createdAt: number;
   screenSharing: boolean;
+  screenSharerId: string | null;
   presenceTimers: Map<string, NodeJS.Timeout>;
 };
 

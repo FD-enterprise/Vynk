@@ -10,6 +10,8 @@ export const EVENTS = {
   WEBRTC_OFFER: "webrtc:offer",
   WEBRTC_ANSWER: "webrtc:answer",
   WEBRTC_ICE_CANDIDATE: "webrtc:ice-candidate",
+  SCREEN_REQUEST: "screen:request",
+  SCREEN_PERMISSION: "screen:permission",
   SCREEN_STARTED: "screen:started",
   SCREEN_STOPPED: "screen:stopped",
   MICROPHONE_STATE: "microphone:state",
@@ -26,11 +28,12 @@ export const MAX_ICE_CANDIDATE_LENGTH = 2_048;
 export const MAX_SOCKET_PAYLOAD_BYTES = 64 * 1024;
 
 export type PresenceState = "online" | "reconnecting" | "offline";
-export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; joinedAt: number; micMuted: boolean; presence: PresenceState };
+export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; canShareScreen: boolean; joinedAt: number; micMuted: boolean; presence: PresenceState };
 export type ChatMessage = { id: string; roomId: string; authorId: string; authorSessionId?: string; authorName: string; text: string; timestamp: number };
 export type RoomCreatePayload = { name: string; sessionId: string };
 export type RoomJoinPayload = { roomId: string; name: string; sessionId: string };
 export type RoomLeavePayload = { roomId: string };
 export type PeerSignalPayload = { roomId: string; targetId: string };
 export type ScreenStatePayload = { roomId: string };
+export type ScreenPermissionPayload = { roomId: string; participantId: string; allowed: boolean };
 export type MicrophoneStatePayload = { roomId: string; muted: boolean };

@@ -3,7 +3,7 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH, MAX_SOCKET_PAYLOAD_BYTES } from "./events.js";
-import { roomCreateSchema, roomJoinSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, microphoneStateSchema } from "./validation.js";
+import { roomCreateSchema, roomJoinSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema } from "./validation.js";
 import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, findParticipantBySession, reconnectParticipant, markReconnecting, addChatMessage, getChatMessages } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
 
@@ -52,7 +52,7 @@ io.on("connection", (socket) => {
     const room = createRoom(socket.id, parsed.data.name, parsed.data.sessionId);
     socket.join(room.id);
     socket.emit(EVENTS.ROOM_CREATED, { roomId: room.id, hostId: room.hostId });
-    socket.emit(EVENTS.ROOM_JOINED, { roomId: room.id, participantId: socket.id, participants: getParticipants(room.id), chatMessages: getChatMessages(room.id) });
+    socket.emit(EVENTS.ROOM_JOINED, { roomId: room.id, participantId: socket.id, participants: getParticipants(room.id), chatMessages: getChatMessages(room.id), screenSharerId: room.screenSharerId });
     emitParticipants(room.id);
   });
 
@@ -73,20 +73,20 @@ io.on("connection", (socket) => {
       previousSocket?.leave(upper);
       previousSocket?.disconnect(true);
       socket.join(upper);
-      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper) });
+      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper), screenSharerId: room.screenSharerId });
       emitParticipants(upper);
       return;
     }
     if (room.participants.has(socket.id)) {
       socket.join(upper);
-      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper) });
+      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper), screenSharerId: room.screenSharerId });
       return;
     }
     if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: `Sala cheia (máx. ${MAX_PARTICIPANTS} participantes).` }); return; }
     const p = addParticipant(upper, socket.id, name, parsed.data.sessionId);
     if (!p) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Não foi possível entrar na sala." }); return; }
     socket.join(upper);
-    socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper) });
+    socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper), screenSharerId: room.screenSharerId });
     emitParticipants(upper);
   });
 
@@ -96,6 +96,12 @@ io.on("connection", (socket) => {
     const { roomId } = parsed.data;
     const authorized = getAuthorizedParticipant(socket.id, roomId);
     if (!authorized) return;
+    const wasScreenSharer = authorized.room.screenSharerId === socket.id;
+    if (wasScreenSharer) {
+      authorized.room.screenSharing = false;
+      authorized.room.screenSharerId = null;
+      io.to(roomId).emit(EVENTS.SCREEN_STOPPED, { roomId, sharerId: socket.id });
+    }
     const { room: remaining, wasHost } = removeParticipant(roomId, socket.id);
     socket.leave(roomId);
     if (remaining) {
@@ -135,24 +141,58 @@ io.on("connection", (socket) => {
     io.to(targetId).emit(EVENTS.WEBRTC_ICE_CANDIDATE, { fromId: socket.id, roomId, candidate });
   });
 
+  socket.on(EVENTS.SCREEN_REQUEST, (payload: unknown) => {
+    const parsed = screenStateSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId } = parsed.data;
+    if (isRateLimited(`screen:request:${socket.id}`, 5, 10_000)) return;
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    if (!authorized || authorized.participant.isHost || authorized.participant.canShareScreen) return;
+    const host = authorized.room.participants.get(authorized.room.hostId);
+    if (host) io.to(host.id).emit(EVENTS.SCREEN_REQUEST, { roomId, participantId: socket.id, participantName: authorized.participant.name });
+  });
+
+  socket.on(EVENTS.SCREEN_PERMISSION, (payload: unknown) => {
+    const parsed = screenPermissionSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId, participantId, allowed } = parsed.data;
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    const room = authorized?.room;
+    if (!room || room.hostId !== socket.id) return;
+    const target = room.participants.get(participantId);
+    if (!target || target.isHost) return;
+    target.canShareScreen = allowed;
+    if (!allowed && room.screenSharerId === target.id) {
+      room.screenSharing = false;
+      room.screenSharerId = null;
+      io.to(roomId).emit(EVENTS.SCREEN_STOPPED, { roomId, sharerId: target.id });
+    }
+    io.to(target.id).emit(EVENTS.SCREEN_PERMISSION, { roomId, participantId: target.id, allowed });
+    emitParticipants(roomId);
+  });
+
   socket.on(EVENTS.SCREEN_STARTED, (payload: unknown) => {
     const parsed = screenStateSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId } = parsed.data;
     const authorized = getAuthorizedParticipant(socket.id, roomId);
     const room = authorized?.room;
-    if (!room || room.hostId !== socket.id) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "Apenas o host pode compartilhar a tela." }); return; }
+    if (!room || (!authorized.participant.isHost && !authorized.participant.canShareScreen)) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "O host ainda não autorizou sua transmissão." }); return; }
+    if (room.screenSharing && room.screenSharerId !== socket.id) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "Outra pessoa já está transmitindo a tela." }); return; }
     room.screenSharing = true;
-    socket.to(roomId).emit(EVENTS.SCREEN_STARTED, { roomId, hostId: socket.id });
+    room.screenSharerId = socket.id;
+    io.to(roomId).emit(EVENTS.SCREEN_STARTED, { roomId, sharerId: socket.id });
   });
   socket.on(EVENTS.SCREEN_STOPPED, (payload: unknown) => {
     const parsed = screenStateSchema.safeParse(payload);
     if (!parsed.success) return;
     const { roomId } = parsed.data;
     const room = getAuthorizedParticipant(socket.id, roomId)?.room;
-    if (!room || room.hostId !== socket.id) return;
+    if (!room || (room.hostId !== socket.id && room.screenSharerId !== socket.id)) return;
     room.screenSharing = false;
-    io.to(roomId).emit(EVENTS.SCREEN_STOPPED, { roomId });
+    const sharerId = room.screenSharerId;
+    room.screenSharerId = null;
+    io.to(roomId).emit(EVENTS.SCREEN_STOPPED, { roomId, sharerId });
   });
 
   socket.on(EVENTS.MICROPHONE_STATE, (payload: unknown) => {
@@ -184,6 +224,11 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const room = getRoomBySocket(socket.id);
     if (!room) { clearSocketRateLimits(socket.id); return; }
+    if (room.screenSharerId === socket.id) {
+      room.screenSharing = false;
+      room.screenSharerId = null;
+      io.to(room.id).emit(EVENTS.SCREEN_STOPPED, { roomId: room.id, sharerId: socket.id });
+    }
     const pendingRoom = markReconnecting(room.id, socket.id, () => {
       emitParticipants(room.id);
       setTimeout(() => {

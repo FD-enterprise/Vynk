@@ -112,6 +112,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-participant-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vynk-participant-name em { margin-left: 6px; color: var(--muted); font-size: 10px; font-style: normal; font-weight: 450; }
 .vynk-participant-name small { width: fit-content; padding: 2px 5px; border-radius: 4px; color: #ffb6a7; background: rgba(255,107,74,.12); font-size: 8px; letter-spacing: .12em; }
+.vynk-permission-button { width: fit-content; padding: 3px 6px; border: 1px solid #3b4552; border-radius: 5px; color: #aeb8c4; background: #242a33; font-size: 9px; font-weight: 650; }
+.vynk-permission-button:hover { border-color: #667486; color: #fff; }
+.vynk-permission-button.allow { border-color: rgba(109,224,161,.35); color: var(--green); background: rgba(109,224,161,.09); }
+.vynk-screen-request { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; padding: 10px; border: 1px solid rgba(244,200,107,.3); border-radius: 9px; background: rgba(244,200,107,.08); color: var(--muted); font-size: 10px; line-height: 1.35; }
+.vynk-screen-request strong { color: #f5d890; font-size: 11px; }
+.vynk-screen-request > div { display: flex; gap: 6px; margin-top: 3px; }
 .vynk-presence { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .vynk-presence.online .vynk-status-dot { background: var(--green); }
 .vynk-presence.reconnecting .vynk-status-dot { background: var(--amber); }

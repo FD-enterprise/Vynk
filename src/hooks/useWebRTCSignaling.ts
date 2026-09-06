@@ -150,15 +150,10 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     remotePeerIsHost.current.set(peerId, remoteIsHost);
     const connection = new RTCPeerConnection(RTC_CONFIGURATION);
     if (mode === "offer") {
-      if (isHost) {
-      connection.addTransceiver("video", { direction: "sendonly" });
-      connection.addTransceiver("audio", { direction: "sendonly" });
+      connection.addTransceiver("video", { direction: "sendrecv" });
+      connection.addTransceiver("audio", { direction: "sendrecv" });
       const microphoneTransceiver = connection.addTransceiver("audio", { direction: "sendrecv" });
       microphoneTransceivers.current.set(peerId, microphoneTransceiver);
-      } else {
-        const microphoneTransceiver = connection.addTransceiver("audio", { direction: "sendrecv" });
-        microphoneTransceivers.current.set(peerId, microphoneTransceiver);
-      }
     }
     connection.ontrack = (event) => {
       if (!isRoomActive() || connections.current.get(peerId) !== connection) {
@@ -269,11 +264,9 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     const controlChannel = connection.createDataChannel("vynk-control");
     trackDataChannel(peer.id, controlChannel);
     try {
-      if (isHost) {
-        for (const track of localScreenStream?.getTracks() ?? []) {
-          const transceiver = connection.getTransceivers().find((candidate) => candidate.receiver.track.kind === track.kind);
-          if (transceiver) await transceiver.sender.replaceTrack(track);
-        }
+      for (const track of localScreenStream?.getTracks() ?? []) {
+        const transceiver = connection.getTransceivers().find((candidate) => candidate.receiver.track.kind === track.kind && candidate !== microphoneTransceivers.current.get(peer.id));
+        if (transceiver) await transceiver.sender.replaceTrack(track);
       }
       const microphoneTrack = localMicrophoneStream?.getAudioTracks()[0] ?? null;
       const microphoneTransceiver = microphoneTransceivers.current.get(peer.id);
@@ -424,7 +417,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     if (!socket?.connected || !selfId || !isRoomActive()) return;
     const screenChanged = previousScreenStream.current !== localScreenStream;
     previousScreenStream.current = localScreenStream;
-    if (isHost && screenChanged) {
+    if (screenChanged) {
       for (const peer of peers) {
         if (peer.id !== selfId && connections.current.has(peer.id)) void renegotiateScreen(peer.id);
       }

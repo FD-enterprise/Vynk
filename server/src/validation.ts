@@ -11,6 +11,7 @@ export const roomJoinSchema = z.object({ roomId: roomIdSchema, name: nameSchema,
 export const roomLeaveSchema = z.object({ roomId: roomIdSchema });
 export const chatSendSchema = z.object({ roomId: roomIdSchema, text: z.string().trim().min(1).max(MAX_CHAT_MESSAGE_LENGTH) });
 export const screenStateSchema = z.object({ roomId: roomIdSchema });
+export const screenPermissionSchema = z.object({ participantId: z.string().min(1).max(MAX_PEER_ID_LENGTH).regex(/^[A-Za-z0-9_-]+$/), roomId: roomIdSchema, allowed: z.boolean() });
 export const microphoneStateSchema = z.object({ roomId: roomIdSchema, muted: z.boolean() });
 
 const peerIdSchema = z.string().min(1).max(MAX_PEER_ID_LENGTH).regex(/^[A-Za-z0-9_-]+$/, "Peer inválido");
