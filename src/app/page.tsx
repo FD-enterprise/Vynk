@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getParticipantSessionId, getSignalingSocket } from "@/lib/socket";
 import { EVENTS, type PublicRoom } from "@/lib/events";
 
 type LoadingState = "create" | "join" | "list" | "join-request" | "pending";
+type NamePromptTarget = { roomId: string; mode: "code" | "request" } | null;
 
 export default function Home() {
   const router = useRouter();
@@ -16,6 +17,9 @@ export default function Home() {
   const [rooms, setRooms] = useState<PublicRoom[]>([]);
   const [showRooms, setShowRooms] = useState(false);
   const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
+  const [namePromptTarget, setNamePromptTarget] = useState<NamePromptTarget>(null);
+  const [namePromptValue, setNamePromptValue] = useState("");
+  const [namePromptError, setNamePromptError] = useState<string | null>(null);
   const pendingRequestCleanup = useRef<(() => void) | null>(null);
 
   useEffect(() => () => pendingRequestCleanup.current?.(), []);
@@ -45,16 +49,13 @@ export default function Home() {
     timer = window.setTimeout(() => { cleanup(); setLoading((v) => (v === "create" ? null : v)); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
   };
 
-  const handleJoin = () => {
-    const upper = code.trim().toUpperCase();
-    if (!validateName(name)) { setError("Informe seu nome."); return; }
-    if (!/^[A-Z0-9]{6}$/.test(upper)) { setError("Código deve ter 6 caracteres (A-Z, 0-9)."); return; }
+  const startCodeJoin = (roomId: string, participantName: string) => {
     pendingRequestCleanup.current?.();
     setError(null); setStatus(null); setLoading("join");
     const socket = getSignalingSocket();
-    const emit = () => socket.emit(EVENTS.ROOM_JOIN, { roomId: upper, name: name.trim(), sessionId: getParticipantSessionId() });
+    const emit = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: participantName, sessionId: getParticipantSessionId() });
     let timer: number | null = null;
-    const onJoined = (data: { roomId: string }) => { cleanup(); localStorage.setItem("vynk_name", name.trim()); router.push(`/room/${data.roomId}`); };
+    const onJoined = (data: { roomId: string }) => { cleanup(); localStorage.setItem("vynk_name", participantName); router.push(`/room/${data.roomId}`); };
     const onError = (data: { message: string }) => { setError(data.message); setLoading(null); cleanup(); };
     const cleanup = () => {
       socket.off(EVENTS.ROOM_JOINED, onJoined);
@@ -68,6 +69,18 @@ export default function Home() {
     socket.on(EVENTS.ROOM_ERROR, onError);
     if (socket.connected) emit(); else socket.once("connect", emit);
     timer = window.setTimeout(() => { cleanup(); setLoading((v) => (v === "join" ? null : v)); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
+  };
+
+  const handleJoin = () => {
+    const upper = code.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(upper)) { setError("Código deve ter 6 caracteres (A-Z, 0-9)."); return; }
+    if (!validateName(name)) {
+      setNamePromptTarget({ roomId: upper, mode: "code" });
+      setNamePromptValue("");
+      setNamePromptError(null);
+      return;
+    }
+    startCodeJoin(upper, name.trim());
   };
 
   const handleListRooms = () => {
@@ -92,13 +105,12 @@ export default function Home() {
     timer = window.setTimeout(() => { cleanup(); setLoading(null); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
   };
 
-  const handleRequestJoin = (roomId: string) => {
-    if (!validateName(name)) { setError("Informe um nome antes de pedir para entrar."); return; }
+  const startJoinRequest = (roomId: string, participantName: string) => {
     pendingRequestCleanup.current?.();
     setError(null); setStatus(null); setPendingRoomId(roomId); setLoading("join-request");
-    localStorage.setItem("vynk_name", name.trim());
+    localStorage.setItem("vynk_name", participantName);
     const socket = getSignalingSocket();
-    const emit = () => socket.emit(EVENTS.ROOM_JOIN_REQUEST, { roomId, name: name.trim(), sessionId: getParticipantSessionId() });
+    const emit = () => socket.emit(EVENTS.ROOM_JOIN_REQUEST, { roomId, name: participantName, sessionId: getParticipantSessionId() });
     let timer: number | null = null;
     const onPending = (data: { roomId: string; message: string }) => { if (data.roomId !== roomId) return; setStatus(data.message); setLoading("pending"); };
     const onJoined = (data: { roomId: string }) => { cleanup(); setStatus(null); setPendingRoomId(null); router.push(`/room/${data.roomId}`); };
@@ -125,6 +137,32 @@ export default function Home() {
     socket.on(EVENTS.ROOM_ERROR, onError);
     if (socket.connected) emit(); else socket.once("connect", emit);
     timer = window.setTimeout(() => { cleanup(); setLoading(null); setPendingRoomId(null); setStatus("O pedido ainda não foi respondido. Tente novamente mais tarde."); }, 60_000);
+  };
+
+  const handleRequestJoin = (roomId: string) => {
+    if (!validateName(name)) {
+      setNamePromptTarget({ roomId, mode: "request" });
+      setNamePromptValue("");
+      setNamePromptError(null);
+      return;
+    }
+    startJoinRequest(roomId, name.trim());
+  };
+
+  const handleNamePromptSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const participantName = namePromptValue.trim();
+    if (!validateName(participantName)) {
+      setNamePromptError("Use um nome de 1 a 24 caracteres.");
+      return;
+    }
+    const target = namePromptTarget;
+    if (!target) return;
+    setName(participantName);
+    setNamePromptTarget(null);
+    setNamePromptError(null);
+    if (target.mode === "code") startCodeJoin(target.roomId, participantName);
+    else startJoinRequest(target.roomId, participantName);
   };
 
   return (
@@ -161,8 +199,9 @@ export default function Home() {
            {error && <p role="alert" className="vynk-home-error">{error}</p>}
           <p className="vynk-home-footnote">Voz, tela e conversa. Sem gravação.</p>
         </section>
-      </main>
-      <footer className="vynk-home-footer"><span>vynk / MVP 0.1</span><span>Feito para conversas que precisam acontecer.</span></footer>
+       </main>
+       {namePromptTarget && <div className="vynk-name-modal-backdrop"><form className="vynk-name-modal" role="dialog" aria-modal="true" aria-labelledby="name-prompt-title" onSubmit={handleNamePromptSubmit}><span className="vynk-eyebrow">ANTES DE ENTRAR</span><h2 id="name-prompt-title">Como podemos te chamar?</h2><p>Esse nome será mostrado para as pessoas da sala.</p><label htmlFor="name-prompt">Seu nome</label><input id="name-prompt" autoFocus autoComplete="nickname" value={namePromptValue} onChange={(event) => { setNamePromptValue(event.target.value); setNamePromptError(null); }} placeholder="Digite seu nome" maxLength={24} />{namePromptError && <span className="vynk-name-modal-error" role="alert">{namePromptError}</span>}<div className="vynk-name-modal-actions"><button type="button" className="vynk-name-modal-cancel" onClick={() => setNamePromptTarget(null)}>Cancelar</button><button type="submit" className="vynk-home-primary">Continuar <span aria-hidden="true">→</span></button></div></form></div>}
+       <footer className="vynk-home-footer"><span>vynk / MVP 0.1</span><span>Feito para conversas que precisam acontecer.</span></footer>
     </div>
   );
 }
