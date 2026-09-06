@@ -306,7 +306,10 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       if (transceiver === microphoneTransceivers.current.get(peerId)) continue;
       const kind = transceiver.receiver.track.kind;
       if (kind === "video" || kind === "audio") {
-        try { await transceiver.sender.replaceTrack(desiredByKind.get(kind) ?? null); } catch { setPeerFailedIfCurrent(peerId, connection); }
+        try {
+          if (transceiver.direction === "recvonly" || transceiver.direction === "inactive") transceiver.direction = "sendrecv";
+          await transceiver.sender.replaceTrack(desiredByKind.get(kind) ?? null);
+        } catch { setPeerFailedIfCurrent(peerId, connection); }
       }
     }
     // Fallback for a peer created before media transceivers were available.
@@ -332,6 +335,15 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         if (!isRoomActive() || connections.current.get(data.fromId) !== connection) return;
         const audioTransceivers = connection.getTransceivers().filter((transceiver) => transceiver.receiver.track.kind === "audio");
         const microphoneTransceiver = audioTransceivers.at(-1);
+        for (const transceiver of connection.getTransceivers()) {
+          if (transceiver === microphoneTransceiver) continue;
+          const kind = transceiver.receiver.track.kind;
+          if (kind === "video" || kind === "audio") {
+            transceiver.direction = "sendrecv";
+            const screenTrack = localScreenStream?.getTracks().find((track) => track.kind === kind);
+            await transceiver.sender.replaceTrack(screenTrack ?? null);
+          }
+        }
         if (microphoneTransceiver) {
           microphoneTransceiver.direction = "sendrecv";
           microphoneTransceivers.current.set(data.fromId, microphoneTransceiver);
@@ -389,7 +401,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       socket.off(EVENTS.WEBRTC_ANSWER, onAnswer);
       socket.off(EVENTS.WEBRTC_ICE_CANDIDATE, onCandidate);
     };
-  }, [createPeer, flushCandidates, isRoomActive, localMicrophoneStream, peers, roomId, selfId, setPeerFailedIfCurrent, setPeerState, socket]);
+  }, [createPeer, flushCandidates, isRoomActive, localMicrophoneStream, localScreenStream, peers, roomId, selfId, setPeerFailedIfCurrent, setPeerState, socket]);
 
   useEffect(() => {
     if (!socket) return;
