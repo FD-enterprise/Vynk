@@ -54,6 +54,7 @@ export default function Home() {
     setError(null); setStatus(null); setLoading("join");
     const socket = getSignalingSocket();
     const emit = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: participantName, sessionId: getParticipantSessionId() });
+    const onReconnect = () => emit();
     let timer: number | null = null;
     const onJoined = (data: { roomId: string }) => { cleanup(); localStorage.setItem("vynk_name", participantName); router.push(`/room/${data.roomId}`); };
     const onPending = (data: { roomId: string; message: string }) => { if (data.roomId !== roomId) return; setStatus(data.message); setLoading("pending"); };
@@ -72,6 +73,7 @@ export default function Home() {
       socket.off(EVENTS.ROOM_JOIN_RESULT, onResult);
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off("connect", emit);
+      socket.io.off("reconnect", onReconnect);
       if (timer) window.clearTimeout(timer);
       if (pendingRequestCleanup.current === cleanup) pendingRequestCleanup.current = null;
     };
@@ -80,6 +82,7 @@ export default function Home() {
     socket.on(EVENTS.ROOM_JOIN_PENDING, onPending);
     socket.on(EVENTS.ROOM_JOIN_RESULT, onResult);
     socket.on(EVENTS.ROOM_ERROR, onError);
+    socket.io.on("reconnect", onReconnect);
     if (socket.connected) emit(); else socket.once("connect", emit);
     timer = window.setTimeout(() => { cleanup(); setLoading(null); setStatus("O pedido ainda não foi respondido. Tente novamente mais tarde."); }, 60_000);
   };
@@ -124,6 +127,7 @@ export default function Home() {
     localStorage.setItem("vynk_name", participantName);
     const socket = getSignalingSocket();
     const emit = () => socket.emit(EVENTS.ROOM_JOIN_REQUEST, { roomId, name: participantName, sessionId: getParticipantSessionId() });
+    const onReconnect = () => emit();
     let timer: number | null = null;
     const onPending = (data: { roomId: string; message: string }) => { if (data.roomId !== roomId) return; setStatus(data.message); setLoading("pending"); };
     const onJoined = (data: { roomId: string }) => { cleanup(); setStatus(null); setPendingRoomId(null); router.push(`/room/${data.roomId}`); };
@@ -141,6 +145,7 @@ export default function Home() {
       socket.off(EVENTS.ROOM_JOIN_RESULT, onResult);
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off("connect", emit);
+      socket.io.off("reconnect", onReconnect);
       if (timer) window.clearTimeout(timer);
       if (pendingRequestCleanup.current === cleanup) pendingRequestCleanup.current = null;
     };
@@ -149,6 +154,7 @@ export default function Home() {
     socket.on(EVENTS.ROOM_JOINED, onJoined);
     socket.on(EVENTS.ROOM_JOIN_RESULT, onResult);
     socket.on(EVENTS.ROOM_ERROR, onError);
+    socket.io.on("reconnect", onReconnect);
     if (socket.connected) emit(); else socket.once("connect", emit);
     timer = window.setTimeout(() => { cleanup(); setLoading(null); setPendingRoomId(null); setStatus("O pedido ainda não foi respondido. Tente novamente mais tarde."); }, 60_000);
   };

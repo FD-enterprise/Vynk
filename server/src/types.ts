@@ -24,7 +24,7 @@ export type Room = {
   joinRequestNotificationsEnabled: boolean;
 };
 
-export type JoinRequest = { socketId: string; sessionId: string; name: string; requestedAt: number };
+export type JoinRequest = { socketId: string; sessionId: string; name: string; requestedAt: number; approved?: boolean };
 
 export type ChatMessage = {
   id: string;

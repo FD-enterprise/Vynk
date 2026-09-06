@@ -131,7 +131,16 @@ io.on("connection", (socket) => {
       socket.emit(EVENTS.ROOM_ERROR, { roomId: room.id, message: "O host está desconectado no momento." });
       return;
     }
-    room.joinRequests.set(socket.id, { socketId: socket.id, sessionId, name, requestedAt: Date.now() });
+    const existing = [...room.joinRequests.values()].find((request) => request.sessionId === sessionId);
+    if (existing) {
+      socket.emit(EVENTS.ROOM_JOIN_PENDING, { roomId: room.id, message: existing.approved ? "Entrada aprovada. Reconectando à sala…" : "Pedido enviado. Aguarde a aprovação do host." });
+      return;
+    }
+    const request = { socketId: socket.id, sessionId, name, requestedAt: Date.now() };
+    room.joinRequests.set(socket.id, request);
+    setTimeout(() => {
+      if (room.joinRequests.get(socket.id) === request) room.joinRequests.delete(socket.id);
+    }, 60_000);
     socket.emit(EVENTS.ROOM_JOIN_PENDING, { roomId: room.id, message: "Pedido enviado. Aguarde a aprovação do host." });
     if (!room.joinRequestNotificationsEnabled) return;
     host.emit(EVENTS.ROOM_JOIN_REQUEST, { roomId: room.id, participantId: socket.id, participantName: name });
@@ -171,6 +180,21 @@ io.on("connection", (socket) => {
     if (!room) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "Sala não encontrada." }); return; }
     if (room.participants.has(socket.id)) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "Você já está nesta sala." }); return; }
     if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "Sala cheia." }); return; }
+    const pendingRequest = [...room.joinRequests.entries()].find(([, request]) => request.sessionId === sessionId);
+    if (pendingRequest?.[1].approved) {
+      room.joinRequests.delete(pendingRequest[0]);
+      const participant = addParticipant(roomId, socket.id, name, sessionId);
+      if (!participant) { socket.emit(EVENTS.ROOM_JOIN_RESULT, { roomId, allowed: false, message: "Não foi possível entrar na sala." }); return; }
+      socket.join(roomId);
+      socket.emit(EVENTS.ROOM_JOIN_RESULT, { roomId, allowed: true, message: "Entrada aprovada pelo host." });
+      socket.emit(EVENTS.ROOM_JOINED, joinedPayload(room, socket.id));
+      emitParticipants(roomId);
+      return;
+    }
+    if (pendingRequest) {
+      socket.emit(EVENTS.ROOM_JOIN_PENDING, { roomId, message: "Pedido enviado. Aguarde a aprovação do host." });
+      return;
+    }
     const host = io.sockets.sockets.get(room.hostId);
     if (!host?.connected) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "O host está desconectado no momento." }); return; }
     queueJoinRequest(room, name, sessionId);
@@ -191,9 +215,13 @@ io.on("connection", (socket) => {
     if (!room || room.hostId !== socket.id) return;
     const request = room.joinRequests.get(participantId);
     if (!request) return;
-    room.joinRequests.delete(participantId);
     const target = io.sockets.sockets.get(participantId);
-    if (!target?.connected) return;
+    if (!target?.connected) {
+      if (allowed) request.approved = true;
+      else room.joinRequests.delete(participantId);
+      return;
+    }
+    room.joinRequests.delete(participantId);
     if (!allowed) {
       target.emit(EVENTS.ROOM_JOIN_RESULT, { roomId, allowed: false, message: "O host recusou seu pedido para entrar." });
       return;
@@ -228,7 +256,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on(EVENTS.ROOM_JOIN, (payload: unknown) => {
-    removeJoinRequestsBySocket(socket.id);
     if (isRateLimited(`room:join:${socket.id}`, 20, 60_000)) { socket.emit(EVENTS.ROOM_ERROR, { message: "Muitas tentativas de entrada. Aguarde um minuto." }); return; }
     const parsed = roomJoinSchema.safeParse(payload);
     if (!parsed.success) { socket.emit(EVENTS.ROOM_ERROR, { message: parsed.error.issues[0]?.message ?? "Dados inválidos" }); return; }
@@ -255,6 +282,22 @@ io.on("connection", (socket) => {
       return;
     }
     if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: `Sala cheia (máx. ${MAX_PARTICIPANTS} participantes).` }); return; }
+    const pendingRequest = [...room.joinRequests.entries()].find(([, request]) => request.sessionId === parsed.data.sessionId);
+    if (pendingRequest?.[1].approved) {
+      room.joinRequests.delete(pendingRequest[0]);
+      const participant = addParticipant(upper, socket.id, name, parsed.data.sessionId);
+      if (!participant) { socket.emit(EVENTS.ROOM_JOIN_RESULT, { roomId: upper, allowed: false, message: "Não foi possível entrar na sala." }); return; }
+      socket.join(upper);
+      socket.emit(EVENTS.ROOM_JOIN_RESULT, { roomId: upper, allowed: true, message: "Entrada aprovada pelo host." });
+      socket.emit(EVENTS.ROOM_JOINED, joinedPayload(room, socket.id));
+      emitParticipants(upper);
+      return;
+    }
+    if (pendingRequest) {
+      socket.emit(EVENTS.ROOM_JOIN_PENDING, { roomId: upper, message: pendingRequest[1].approved ? "Entrada aprovada. Reconectando à sala…" : "Pedido enviado. Aguarde a aprovação do host." });
+      return;
+    }
+    removeJoinRequestsBySocket(socket.id);
     queueJoinRequest(room, name, parsed.data.sessionId);
   });
 
@@ -390,7 +433,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    removeJoinRequestsBySocket(socket.id);
     const room = getRoomBySocket(socket.id);
     if (!room) { clearSocketRateLimits(socket.id); return; }
     if (room.screenSharerId === socket.id) {
