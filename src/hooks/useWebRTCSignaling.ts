@@ -26,24 +26,9 @@ type Props = {
   isRoomActive: () => boolean;
 };
 
-const parseEnvList = (value: string | undefined) => value?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
-const turnUrls = parseEnvList(process.env.NEXT_PUBLIC_TURN_URLS);
-const turnUsernames = parseEnvList(process.env.NEXT_PUBLIC_TURN_USERNAME);
-const turnCredentials = parseEnvList(process.env.NEXT_PUBLIC_TURN_CREDENTIAL);
-const turnServers: RTCIceServer[] = [];
-if (turnUrls.length > 0 && turnUsernames.length === turnUrls.length && turnCredentials.length === turnUrls.length) {
-  turnUrls.forEach((url, index) => turnServers.push({ urls: url, username: turnUsernames[index], credential: turnCredentials[index] }));
-} else if (turnUrls.length > 0 && turnUsernames.length === 1 && turnCredentials.length === 1) {
-  turnServers.push({ urls: turnUrls, username: turnUsernames[0], credential: turnCredentials[0] });
-}
-const iceServers: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] }, ...turnServers];
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] }];
+const signalingUrl = process.env.NEXT_PUBLIC_SIGNALING_URL || "https://vynk-mwxh.onrender.com";
 const forceRelay = process.env.NEXT_PUBLIC_FORCE_TURN === "true";
-
-const RTC_CONFIGURATION: RTCConfiguration = {
-  iceServers,
-  iceCandidatePoolSize: 10,
-  ...(forceRelay ? { iceTransportPolicy: "relay" as const } : {}),
-};
 
 const SCREEN_VIDEO_MAX_BITRATE = 4_000_000;
 
@@ -78,6 +63,24 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
   const [quality, setQuality] = useState<Record<string, PeerQuality>>({});
   const [retryVersion, setRetryVersion] = useState(0);
+  const [iceServers, setIceServers] = useState<RTCIceServer[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadIceServers = async () => {
+      try {
+        const response = await fetch(`${signalingUrl.replace(/\/$/, "")}/turn`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`TURN endpoint returned ${response.status}`);
+        const payload = await response.json() as { iceServers?: RTCIceServer[] };
+        if (!payload.iceServers?.length) throw new Error("TURN endpoint returned no ice servers");
+        if (!cancelled) setIceServers(payload.iceServers);
+      } catch {
+        if (!cancelled) setIceServers(DEFAULT_ICE_SERVERS);
+      }
+    };
+    void loadIceServers();
+    return () => { cancelled = true; };
+  }, []);
 
   const setPeerState = useCallback((peerId: string, state: PeerConnectionState) => {
     if (!isRoomActive()) return;
@@ -158,12 +161,16 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   }, [setPeerState]);
 
   const createPeer = useCallback((peerId: string, mode: NegotiationMode, remoteIsHost: boolean) => {
-    if (!isRoomActive()) return null;
+    if (!isRoomActive() || !iceServers) return null;
     const existing = connections.current.get(peerId);
     if (existing) return existing;
 
     remotePeerIsHost.current.set(peerId, remoteIsHost);
-    const connection = new RTCPeerConnection(RTC_CONFIGURATION);
+    const connection = new RTCPeerConnection({
+      iceServers,
+      iceCandidatePoolSize: 10,
+      ...(forceRelay ? { iceTransportPolicy: "relay" as const } : {}),
+    });
     if (mode === "offer") {
       connection.addTransceiver("video", { direction: "sendrecv" });
       connection.addTransceiver("audio", { direction: "sendrecv" });
@@ -260,7 +267,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     connections.current.set(peerId, connection);
     setPeerState(peerId, "new");
     return connection;
-  }, [isHost, isRoomActive, onRemoteMicrophoneStream, onRemoteStream, removePeer, roomId, setPeerState, socket, trackDataChannel]);
+  }, [iceServers, isRoomActive, onRemoteMicrophoneStream, onRemoteStream, removePeer, roomId, setPeerState, socket, trackDataChannel]);
 
   const flushCandidates = useCallback(async (peerId: string, connection: RTCPeerConnection) => {
     const pending = pendingCandidates.current.get(peerId) ?? [];
@@ -314,7 +321,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     } catch {
       setPeerFailedIfCurrent(peer.id, connection);
     }
-  }, [createPeer, isHost, isRoomActive, localMicrophoneStream, localScreenStream, roomId, setPeerFailedIfCurrent, setPeerState, socket, trackDataChannel]);
+  }, [createPeer, isRoomActive, localMicrophoneStream, localScreenStream, roomId, setPeerFailedIfCurrent, setPeerState, socket, trackDataChannel]);
 
   const renegotiateScreen = useCallback(async (peerId: string) => {
     if (!isRoomActive()) return;

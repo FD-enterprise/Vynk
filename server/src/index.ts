@@ -16,6 +16,75 @@ app.use(express.json({ limit: "16kb" }));
 app.get("/health", (_req, res) => res.json({ ok: true, uptime: process.uptime(), service: "vynk-signaling" }));
 app.get("/", (_req, res) => res.json({ ok: true, service: "vynk-signaling", docs: "/health" }));
 
+type IceServer = { urls: string | string[]; username?: string; credential?: string };
+const TURN_CREDENTIAL_TTL_SECONDS = 86_400;
+const TURN_CACHE_MS = 60 * 60 * 1000;
+let cachedTurn: { iceServers: IceServer[]; expiresAt: number } | null = null;
+let turnRequest: Promise<IceServer[]> | null = null;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseIceServers(payload: unknown): IceServer[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.iceServers)) return null;
+  const iceServers = payload.iceServers.filter((value): value is Record<string, unknown> => {
+    if (!isRecord(value)) return false;
+    const urls = value.urls;
+    const hasValidUrls = typeof urls === "string" && urls.length > 0
+      || Array.isArray(urls) && urls.length > 0 && urls.every((url) => typeof url === "string" && url.length > 0);
+    return hasValidUrls
+      && (value.username === undefined || typeof value.username === "string")
+      && (value.credential === undefined || typeof value.credential === "string");
+  });
+  return iceServers.length > 0 ? iceServers as IceServer[] : null;
+}
+
+async function generateTurnIceServers(): Promise<IceServer[]> {
+  const token = process.env.CLOUDFLARE_TURN_API_TOKEN;
+  const keyId = process.env.CLOUDFLARE_TURN_KEY_ID;
+  if (!token || !keyId) throw new Error("Cloudflare TURN is not configured");
+
+  if (cachedTurn && cachedTurn.expiresAt > Date.now()) return cachedTurn.iceServers;
+  if (turnRequest) return turnRequest;
+
+  turnRequest = (async () => {
+    const response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ttl: TURN_CREDENTIAL_TTL_SECONDS }),
+    });
+    if (!response.ok) throw new Error(`Cloudflare TURN returned ${response.status}`);
+    const iceServers = parseIceServers(await response.json());
+    if (!iceServers) throw new Error("Cloudflare TURN returned invalid ice servers");
+    cachedTurn = { iceServers, expiresAt: Date.now() + TURN_CACHE_MS };
+    return iceServers;
+  })();
+
+  try {
+    return await turnRequest;
+  } finally {
+    turnRequest = null;
+  }
+}
+
+app.get("/turn", async (_req, res) => {
+  if (!process.env.CLOUDFLARE_TURN_API_TOKEN || !process.env.CLOUDFLARE_TURN_KEY_ID) {
+    res.status(503).json({ error: "TURN is not configured" });
+    return;
+  }
+  try {
+    res.set("Cache-Control", "no-store");
+    res.json({ iceServers: await generateTurnIceServers() });
+  } catch (error) {
+    console.error("[vynk-signaling] failed to generate TURN credentials", error);
+    res.status(502).json({ error: "Could not generate TURN credentials" });
+  }
+});
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: CLIENT_URL === "*" ? true : CLIENT_URL, methods: ["GET", "POST"] }, maxHttpBufferSize: MAX_SOCKET_PAYLOAD_BYTES });
 

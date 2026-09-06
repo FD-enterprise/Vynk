@@ -18,17 +18,16 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## WebRTC entre redes diferentes
 
-O frontend usa STUN por padrão. Para habilitar um relay TURN sem alterar o código, configure no ambiente de build da Vercel:
+O frontend usa STUN por padrão. Para habilitar o relay TURN da Cloudflare, configure no ambiente do servidor de signaling (Render):
 
 ```bash
-NEXT_PUBLIC_TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349
-NEXT_PUBLIC_TURN_USERNAME=usuario
-NEXT_PUBLIC_TURN_CREDENTIAL=credencial
+CLOUDFLARE_TURN_API_TOKEN=seu-token
+CLOUDFLARE_TURN_KEY_ID=seu-key-id
 ```
 
-Sem as três variáveis completas, o Vynk mantém somente STUN e não ativa nenhum serviço pago. Como essas variáveis são entregues ao navegador, prefira credenciais TURN temporárias ou com prazo curto.
+O servidor gera credenciais TURN temporárias pela API da Cloudflare e as entrega ao navegador em `GET /turn`. O token da API nunca é enviado ao cliente.
 
-Se o provedor entregar credenciais diferentes para cada servidor, informe as três listas na mesma ordem, separadas por vírgula. URLs TURN devem usar o formato `turn:host:porta?transport=tcp` ou `turns:host:porta?transport=tcp`.
+Sem essas duas variáveis, o Vynk mantém somente STUN. O frontend também usa STUN como fallback se o endpoint TURN estiver indisponível.
 
 Para diagnosticar um provedor TURN, configure temporariamente `NEXT_PUBLIC_FORCE_TURN=true`. Isso força o uso do relay e consome a franquia mesmo quando uma conexão direta seria possível; remova ou desative a variável após o teste.
 

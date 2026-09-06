@@ -12,3 +12,7 @@ services:
         value: 10000 # Render injeta PORT
       - key: CLIENT_URL
         value: https://vynk-dun.vercel.app
+      - key: CLOUDFLARE_TURN_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_TURN_KEY_ID
+        sync: false
