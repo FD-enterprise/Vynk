@@ -45,6 +45,21 @@ const RTC_CONFIGURATION: RTCConfiguration = {
   ...(forceRelay ? { iceTransportPolicy: "relay" as const } : {}),
 };
 
+const SCREEN_VIDEO_MAX_BITRATE = 4_000_000;
+
+async function limitScreenVideoBitrate(sender: RTCRtpSender): Promise<void> {
+  try {
+    const parameters = sender.getParameters();
+    const encodings = parameters.encodings.length > 0 ? parameters.encodings : [{}];
+    await sender.setParameters({
+      ...parameters,
+      encodings: encodings.map((encoding) => ({ ...encoding, maxBitrate: SCREEN_VIDEO_MAX_BITRATE })),
+    });
+  } catch {
+    // Alguns navegadores só aceitam setParameters depois que o track foi anexado.
+  }
+}
+
 export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, localMicrophoneStream, onRemoteStream, onRemoteMicrophoneStream, onRemotePeerRemoved, isRoomActive }: Props) {
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
@@ -264,9 +279,14 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     const controlChannel = connection.createDataChannel("vynk-control");
     trackDataChannel(peer.id, controlChannel);
     try {
+      const screenVideoTransceiver = connection.getTransceivers().find((candidate) => candidate.receiver.track.kind === "video");
+      if (screenVideoTransceiver) await limitScreenVideoBitrate(screenVideoTransceiver.sender);
       for (const track of localScreenStream?.getTracks() ?? []) {
         const transceiver = connection.getTransceivers().find((candidate) => candidate.receiver.track.kind === track.kind && candidate !== microphoneTransceivers.current.get(peer.id));
-        if (transceiver) await transceiver.sender.replaceTrack(track);
+        if (transceiver) {
+          await transceiver.sender.replaceTrack(track);
+          if (track.kind === "video") await limitScreenVideoBitrate(transceiver.sender);
+        }
       }
       const microphoneTrack = localMicrophoneStream?.getAudioTracks()[0] ?? null;
       const microphoneTransceiver = microphoneTransceivers.current.get(peer.id);
@@ -309,6 +329,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
         try {
           if (transceiver.direction === "recvonly" || transceiver.direction === "inactive") transceiver.direction = "sendrecv";
           await transceiver.sender.replaceTrack(desiredByKind.get(kind) ?? null);
+          if (kind === "video") await limitScreenVideoBitrate(transceiver.sender);
         } catch { setPeerFailedIfCurrent(peerId, connection); }
       }
     }
@@ -342,6 +363,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
             transceiver.direction = "sendrecv";
             const screenTrack = localScreenStream?.getTracks().find((track) => track.kind === kind);
             await transceiver.sender.replaceTrack(screenTrack ?? null);
+            if (kind === "video") await limitScreenVideoBitrate(transceiver.sender);
           }
         }
         if (microphoneTransceiver) {
