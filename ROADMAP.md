@@ -1,1277 +1,332 @@
-# ROADMAP — MVP WebRTC
+# ROADMAP — Vynk
 
-Este documento é a fonte de verdade do progresso e da ordem oficial de desenvolvimento do projeto.
+Documento de estado do produto, da arquitetura e das validações pendentes.
+
+Última atualização: 06/09/2026
 
 Legenda:
 
-* `[ ]` Pendente
-* `[x]` Concluído e validado
-
-Status:
-
-* `NÃO INICIADA`
-* `EM ANDAMENTO`
-* `CONCLUÍDA`
+- `[x]` Implementado e validado no código ou em teste correspondente
+- `[ ]` Pendente ou ainda sem validação suficiente
+- `IMPLEMENTADO` Código concluído; pode faltar validação manual específica
+- `VALIDADO` Confirmado por teste automatizado ou uso manual registrado
 
 ---
 
-# Visão do projeto
-
-Aplicação web de salas privadas para:
-
-* compartilhamento de tela;
-* conversa por voz;
-* chat de texto;
-* presença em tempo real.
-
-Fluxo:
+## Estado atual
 
 ```text
-HOST
-↓
-cria sala
-↓
-recebe link/código
-↓
-amigos entram
-↓
-host compartilha tela
-↓
-participantes assistem
-↓
-conversa por voz
-↓
-chat
+IMPLEMENTAÇÃO DO MVP: CONCLUÍDA
+VALIDAÇÃO MULTI-REDE E MULTI-DISPOSITIVO: PENDENTE
 ```
 
-Limite inicial:
+O Vynk é uma aplicação de salas temporárias para:
 
-```text
-Até 5 participantes por sala
-```
+- compartilhamento de tela;
+- áudio da tela quando o navegador/OS disponibiliza;
+- voz bidirecional;
+- chat efêmero;
+- presença e reconexão;
+- aprovação do host para pedidos vindos da lista pública;
+- instalação como PWA.
+
+Limite atual: até 5 participantes por sala.
 
 ---
 
-# Stack
+## Arquitetura real
 
-## Aplicação
+### Frontend
 
-* Next.js
-* React
-* TypeScript
-* App Router
+- Next.js `16.3.4`
+- React `19.2.8`
+- TypeScript
+- App Router
+- Deploy planejado/registrado na Vercel: `https://vynk-dun.vercel.app`
 
-## Backend
+### Signaling
 
-* Backend dentro da própria aplicação/deploy Vercel
-* WebSockets
-* signaling WebRTC
-* gerenciamento de salas
-* presença
-* chat
+- Node.js + Express + Socket.IO
+- Serviço separado em `server/`
+- Deploy Render: `https://vynk-mwxh.onrender.com`
+- Healthcheck: `/health`
+- URL configurada pelo frontend com `NEXT_PUBLIC_SIGNALING_URL`
+- Fallback de produção mantido em `src/lib/socket.ts`
 
-## Mídia
+### Mídia
 
-* WebRTC P2P
-* `RTCPeerConnection`
-* `getDisplayMedia`
-* `getUserMedia`
+- WebRTC mesh: uma `RTCPeerConnection` por par de participantes
+- `RTCPeerConnection`, `getDisplayMedia` e `getUserMedia`
+- Signaling transporta apenas eventos de controle, SDP e ICE
+- Mídia segue diretamente entre peers quando possível
+- Quando necessário, o relay é o TURN da Cloudflare, não o servidor Render
 
-## Infraestrutura
+### Persistência
 
-```text
-Vercel
-  ├── frontend
-  ├── backend
-  ├── WebSocket
-  ├── signaling
-  └── chat
+- Nenhum banco de dados
+- Salas, participantes, pedidos e histórico de chat ficam em memória no processo Render
+- Reiniciar o serviço encerra as salas existentes
 
-WebRTC
-  └── tela + áudio diretamente entre peers
-```
+### Infraestrutura TURN
 
-## Banco de dados
-
-Nenhum banco obrigatório inicialmente.
-
-Salas podem permanecer temporariamente em memória enquanto essa abordagem for suficiente para os testes do MVP.
+- Credenciais temporárias geradas no servidor via API da Cloudflare
+- Endpoint do signaling: `GET /turn`
+- Variáveis privadas no Render:
+  - `CLOUDFLARE_TURN_API_TOKEN`
+  - `CLOUDFLARE_TURN_KEY_ID`
+- STUN do Google e Cloudflare continuam disponíveis como fallback
+- `NEXT_PUBLIC_FORCE_TURN=true` existe apenas para diagnóstico e não deve ficar ativo normalmente
 
 ---
 
-# Regra principal de arquitetura
+## Funcionalidades concluídas
 
-Nunca enviar vídeo ou áudio pelo backend.
+### Salas e entrada
 
-Correto:
+- [x] Criar sala com código aleatório de 6 caracteres
+- [x] Entrar diretamente com código
+- [x] Entrar por link `/room/[code]`
+- [x] Solicitar nome temporário, validado entre 1 e 24 caracteres
+- [x] Modal `Como podemos te chamar?` ao tentar entrar sem nome
+- [x] Lista de salas ativas na home
+- [x] Exibir host e ocupação da sala
+- [x] Solicitar entrada em sala a partir da lista
+- [x] Host aprovar ou recusar pedidos de entrada
+- [x] Cancelar pedidos pendentes quando necessário
+- [x] Bloquear entrada aprovada quando a sala fica cheia
+- [x] Limite de 5 participantes controlado pelo servidor
 
-```text
-PC A ═════════ WebRTC ═════════ PC B
-```
+Regra atual:
 
-Vercel:
+- entrada direta por código continua imediata;
+- entrada pela lista exige aprovação do host.
 
-```text
-PC A
- │
- ├──── signaling ────► Vercel
- │                       │
- │                       └──── signaling ────► PC B
- │
- └════════════ WebRTC ═══════════════════════► PC B
-```
+Arquivos principais: `src/app/page.tsx`, `src/app/room/[code]/page.tsx`, `server/src/index.ts`, `server/src/rooms.ts`.
 
-WebSocket deve transportar apenas:
+### Presença e reconexão
 
-* criação/entrada de salas;
-* signaling;
-* presença;
-* chat;
-* eventos de controle.
+- [x] Identidade temporária por aba com `sessionId`
+- [x] Estados `online`, `reconnecting` e `offline`
+- [x] Recuperar participante após reconexão dentro da janela de recuperação
+- [x] Evitar duplicação após refresh/reconexão
+- [x] Transferir host após remoção definitiva do host anterior
+- [x] Limpar participante, peers, streams e timers ao sair
 
-WebRTC transporta:
+### Signaling WebRTC
 
-* tela;
-* áudio da tela;
-* microfone.
+- [x] Eventos compartilhados em `shared/events.ts`
+- [x] Offer, answer e ICE candidate
+- [x] Validação Zod no servidor
+- [x] Verificação de origem, destino e participação na sala
+- [x] Fila para ICE recebido antes do SDP remoto
+- [x] Retry controlado após falha ICE
+- [x] Limpeza de listeners, timers, data channels e peer connections
 
----
+### Tela compartilhada
 
-# RISCO TÉCNICO ASSUMIDO
+- [x] Captura explícita com `getDisplayMedia`
+- [x] Preview local
+- [x] Tela do host distribuída para os participantes
+- [x] Participante autorizado pelo host pode compartilhar tela
+- [x] Parar pelo botão ou pelo encerramento nativo do seletor
+- [x] Encerrar tracks e remover imagem remota sem quadro congelado
+- [x] Fullscreen da transmissão
+- [x] Preferência de captura em 30 FPS
+- [x] Bitrate máximo de vídeo configurado em `3,5 Mbps`
+- [x] `degradationPreference: maintain-resolution` para preservar detalhe da tela
+- [x] Bitrate máximo do áudio da tela configurado em `256 kbps`
+- [x] Áudio de sistema marcado como conteúdo musical
+- [x] Cancelamento de eco, ganho automático e redução de ruído desativados para áudio de sistema quando suportado
 
-O projeto utilizará WebSockets na Vercel enquanto o recurso estiver adequado ao MVP.
+Arquivos principais: `src/hooks/useScreenShare.ts`, `src/hooks/useWebRTCSignaling.ts`.
 
-Essa escolha deve ser tratada como experimental até ser validada com uso real.
+### Voz
 
-Se limitações da Vercel impedirem o funcionamento confiável do MVP:
+- [x] Solicitar microfone somente por ação explícita
+- [x] Voz bidirecional entre participantes
+- [x] Transceiver separado para microfone e áudio da tela
+- [x] Mutar/desmutar sem renegociação
+- [x] Indicador remoto de microfone
+- [x] Controle individual de voz por participante
+- [x] Volume individual de `0%` a `200%`, padrão `100%`
+- [x] `GainNode` para permitir amplificação acima de 100%
+- [x] Controle separado para volume da transmissão
+- [x] Tratamento de autoplay bloqueado com ação `Liberar áudio`
 
-```text
-não reescrever o projeto inteiro
-↓
-isolar camada de signaling
-↓
-migrar apenas o serviço realtime
-```
+### Chat
 
-A arquitetura deve evitar acoplamento excessivo ao provedor.
+- [x] Enviar por botão ou Enter
+- [x] Shift+Enter para quebra de linha
+- [x] Histórico temporário limitado a 200 mensagens
+- [x] Mensagem limitada a 500 caracteres
+- [x] Nome, autor e horário local
+- [x] Rate limit básico no servidor
+- [x] Renderização como texto, sem HTML arbitrário
 
----
+### Interface e acessibilidade
 
-# FASE 1 — Inicialização
+- [x] Layout desktop com palco e painel lateral
+- [x] Layout mobile responsivo
+- [x] Estado de conexão e qualidade de mídia
+- [x] Estados de loading, erro e permissão
+- [x] Foco visível e labels acessíveis
+- [x] Controles de volume acessíveis
+- [x] Home reorganizada por criar, entrar com código e descobrir salas
+- [x] Modal de nome antes da entrada
 
-**Status:** `CONCLUÍDA`
+### PWA
 
-## Objetivo
+- [x] Manifesto em `/manifest.webmanifest`
+- [x] Ícone do Vynk
+- [x] `display: standalone`
+- [x] Tema escuro para instalação
+- [x] Service worker registrado somente em produção
+- [x] Service worker sem cache agressivo de páginas dinâmicas
 
-Criar aplicação Next.js pronta para frontend e backend.
-
-## Tarefas
-
-* [x] Criar projeto Next.js
-* [x] Configurar TypeScript
-* [x] Utilizar App Router
-* [x] Criar repositório Git
-* [x] Criar `.gitignore`
-* [x] Criar `.env.example`
-* [x] Garantir que `.env` não seja versionado
-* [x] Definir estrutura de pastas
-* [x] Instalar apenas dependências necessárias
-* [x] Inspecionar scripts de `package.json`
-* [x] Executar lint
-* [x] Executar typecheck
-* [x] Executar build
-
-## Resultado
-
-```text
-Next.js funcionando
-+
-backend disponível
-+
-TypeScript válido
-```
-
----
-
-# FASE 2 — Deploy inicial na Vercel
-
-**Status:** `CONCLUÍDA`
-
-## Objetivo
-
-Validar o ambiente de produção antes de criar funcionalidades complexas.
-
-## Tarefas
-
-* [x] Subir repositório para GitHub
-* [x] Importar projeto na Vercel
-* [x] Confirmar Fluid Compute — verificar em Vercel Dashboard → Project Settings → Functions (Fluid Compute ativo)
-* [x] Configurar variáveis de ambiente — `NEXT_PUBLIC_WS_URL` dummy para liberar deploy (fase 1 não exige env real)
-* [x] Fazer primeiro deploy — https://vynk-dun.vercel.app
-* [x] Confirmar HTTPS — `strict-transport-security: max-age=63072000` OK
-* [x] Testar frontend — `GET /` 200 `x-vercel-cache: HIT` (template Create Next App)
-* [x] Testar endpoint backend simples — `GET /api/health` 200 `{"ok":true,"version":"0.1.0-fase1"}` `x-vercel-id: gru1`
-* [x] Registrar URL de produção — https://vynk-dun.vercel.app
-
-## Resultado esperado
-
-```text
-GitHub
-↓
-Vercel
-↓
-https://vynk-dun.vercel.app
-```
+Arquivos principais: `src/app/manifest.ts`, `public/icon.svg`, `public/sw.js`, `src/components/ServiceWorkerRegistration.tsx`.
 
 ---
 
-# FASE 3 — Prova de WebSocket na Vercel
+## Segurança e limites
 
-**Status:** `CONCLUÍDA — LIMITAÇÃO CONFIRMADA`
+- [x] Códigos e nomes validados no servidor
+- [x] Peer IDs limitados por tamanho e caracteres permitidos
+- [x] SDP e ICE limitados por tamanho e schema
+- [x] Participação verificada antes de signaling, chat, microfone e tela
+- [x] Host verificado para permissões de tela e aprovação de entrada
+- [x] Payload HTTP e buffer Socket.IO limitados
+- [x] Rate limit para criação, entrada, pedidos, chat e signaling
+- [x] Tokens da Cloudflare mantidos fora do bundle do navegador
+- [x] Nenhum áudio ou vídeo armazenado
+- [x] Nenhuma mídia enviada pelo signaling Render
 
-## Objetivo
+Limitações conhecidas:
 
-Validar WebSocket antes de desenvolver o restante do sistema.
-
-Esta fase é obrigatória.
-
-## Tarefas
-
-* [x] Criar conexão WebSocket mínima — `src/pages/api/socket.ts:1` (Socket.IO `path: /api/socket`)
-* [x] Abrir conexão pelo navegador — `/ws-test` criado e testado local
-* [x] Receber evento do servidor — `server:welcome` local OK (`src/pages/api/socket.ts:17`)
-* [x] Enviar evento ao servidor — `client:ping` → `server:pong` local OK (2 clientes)
-* [x] Manter duas abas conectadas — local OK (2 `Socket` via `socket.io-client`)
-* [x] Testar dois computadores — local simulado com 2 clients Node
-* [x] Testar conexão durante alguns minutos — local estável
-* [x] Testar reconexão — `reconnection: true` local OK (`src/app/ws-test/page.tsx:24`)
-* [x] Testar após novo deploy — produção falhou (ver abaixo)
-* [x] Observar possíveis encerramentos da conexão — produção: `xhr poll error` + `308 Unexpected server response`
-* [x] Registrar limitações encontradas — ver resultado
-
-## Resultado Fase 3
-
-```text
-LOCAL (next dev :3000): ✓ PASSOU
-  fetch /api/socket → {ws:"initialized"}
-  2 clients → welcome + ping/pong + broadcast OK
-
-PRODUÇÃO (https://vynk-dun.vercel.app): ✗ FALHOU
-  GET /api/socket → 200 {ws:"initialized"} OK
-  GET /ws-test → 200 (página OK)
-  WebSocket → polling: "xhr poll error"
-  WebSocket → websocket: "308 Unexpected server response: 308" (wss://vynk-dun.vercel.app/api/socket/?EIO=4&transport=websocket)
-  Causa: Vercel Serverless Functions são stateless e não mantêm upgrade WebSocket persistente (limite do plano Hobby + sem suporte a Socket.IO em /api). Confirmado em logs Vercel.
-```
-
-**Decisão per # RISCO TÉCNICO ASSUMIDO:**
-
-```text
-não reescrever o projeto inteiro
-↓
-isolar camada de signaling
-↓
-migrar apenas o serviço realtime para servidor dedicado (ex: Render Free / Fly.io)
-↓
-manter frontend + /api/health na Vercel (https://vynk-dun.vercel.app)
-```
-
-Próximo passo requer autorização: criar serviço realtime separado e manter arquitetura desacoplada (frontend Vercel → env `NEXT_PUBLIC_SIGNALING_URL`).
-
-## Marco
-
-```text
-PC A
-  │
-  ▼
-Vercel WebSocket
-  ▲
-  │
-PC B
-```
-
-Somente avançar quando dois clientes conseguirem se comunicar.
+- salas desaparecem quando o processo Render reinicia;
+- a arquitetura mesh aumenta o upload do transmissor conforme entram participantes;
+- áudio da tela depende do suporte do navegador e do sistema operacional;
+- amplificar voz acima de 100% pode causar clipping se a origem já estiver alta;
+- o service worker não oferece uso offline completo, por decisão para não cachear salas e bundles dinâmicos;
+- o ícone atual é SVG; adicionar versões raster específicas pode melhorar compatibilidade de instalação em alguns dispositivos Apple.
 
 ---
 
-# FASE 4 — Criação de salas
+## Validação automatizada atual
 
-**Status:** `CONCLUÍDA`
+Comandos do frontend:
 
-## Nota isolamento (pós Fase 3)
-
-* Signaling isolado em `server/` (Node + Socket.IO) — deploy Render: `https://vynk-mwxh.onrender.com` (`server/render.yaml:1`) — `GET /health` OK
-* Frontend Vercel (`https://vynk-dun.vercel.app`) consome via `NEXT_PUBLIC_SIGNALING_URL` (`src/lib/socket.ts:5`, `.env.example:4`, `src/hooks/useSocket.ts:1`)
-* Fallback produção: `https://vynk-mwxh.onrender.com` se env não setado
-* Fix build Vercel: `tsconfig.json:33` + `eslint.config.mjs:14` + `.vercelignore:1` excluindo `server/` (erro `Cannot find module 'express'` resolvido)
-
-## Tarefas
-
-* [x] Criar tipo `Room` — `server/src/types.ts:4`, `server/src/rooms.ts:1`
-* [x] Gerar código aleatório — `server/src/rooms.ts:5` (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, 6 chars, colisão verificada)
-* [x] Não utilizar IDs públicos sequenciais — código aleatório não sequencial
-* [x] Criar sala — `room:create` → `room:created` (`server/src/index.ts:31`, `src/app/page.tsx:14`)
-* [x] Entrar por código — `room:join` com validação `roomIdSchema` (`server/src/validation.ts:4`, `src/app/page.tsx:28`)
-* [x] Entrar por link — `/room/[code]` (`src/app/room/[code]/page.tsx:1`, link `/room/K7M4PX`)
-* [x] Solicitar nome temporário — `localStorage vynk_name` + prompt (`src/app/page.tsx:14`, `src/app/room/[code]/page.tsx:12`)
-* [x] Identificar host — `isHost` + badge HOST (`server/src/rooms.ts:13`, `src/app/room/[code]/page.tsx:42`)
-* [x] Validar código — `z.string().regex(/^[A-Z0-9]{6}$/)` (`server/src/validation.ts:4`)
-* [x] Validar nome — `z.string().min(1).max(24).regex(...)` (`server/src/validation.ts:3`, frontend `validateName`)
-* [x] Tratar sala inexistente — `room:error: Sala não encontrada.` (`server/src/index.ts:42`, `src/app/room/[code]/page.tsx:22`)
-* [ ] Implementar saída da sala
-
-## Fluxo
-
-```text
-PC A
-↓
-Criar sala
-↓
-K7M4PX
-
-PC B
-↓
-/room/K7M4PX
-↓
-Entrar
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
+
+Comandos do signaling:
+
+```bash
+cd server
+npm run typecheck
+npm run build
+```
+
+Estado conhecido no último ciclo:
+
+- [x] Typecheck do frontend
+- [x] Lint do frontend
+- [x] 10 testes automatizados passando
+- [x] Build de produção do frontend
+- [x] Typecheck do signaling
+- [x] Build de produção do signaling
+- [x] `git diff --check`
 
 ---
-
-# FASE 5 — Presença em tempo real
-
-**Status:** `CONCLUÍDA`
-
-## Implementação
-
-* Identidade temporária persistida no navegador com `crypto.randomUUID()` (`src/lib/socket.ts:6`)
-* Servidor mantém `presence` por participante em `server/src/types.ts:1`
-* Desconexão publica `reconnecting`; após 15s publica `offline`; após mais 5s remove o participante (`server/src/rooms.ts:65`, `server/src/index.ts:150`)
-* Reconexão troca o `socket.id` mantendo a mesma identidade, sem criar duplicata (`server/src/rooms.ts:50`, `server/src/index.ts:56`)
-* Host é preservado durante a janela de reconexão e transferido apenas após remoção definitiva
-* Lista e quantidade exibem status/colorização em `/room/[code]` (`src/app/room/[code]/page.tsx:108`)
-
-## Tarefas
-
-* [x] Manter participantes da sala
-* [x] Atualizar lista em tempo real
-* [x] Mostrar host
-* [x] Mostrar quantidade
-* [x] Estado `online`
-* [x] Estado `reconnecting`
-* [x] Estado `offline`
-* [x] Detectar fechamento da aba — `disconnect` do Socket.IO
-* [x] Remover participante desconectado — após janela de recuperação de 20s
-* [x] Evitar participante fantasma — remoção após `offline`
-* [x] Evitar participantes duplicados — `sessionId` temporário + rebind de socket
-
-## Validação
-
-* `server`: `npm run typecheck` e `npm run build` passaram
-* `client`: `npm run lint`, `npx tsc --noEmit` e `npm run build` passaram
-* Teste realtime local: `online → reconnecting → online` sem duplicação
-* Teste de expiração local: `online → reconnecting → offline → removido`
-
-Próxima fase requer autorização explícita: **FASE 6 — Eventos compartilhados**.
-
----
-
-# FASE 6 — Eventos compartilhados
-
-**Status:** `CONCLUÍDA`
-
-## Objetivo
-
-Centralizar contratos realtime.
-
-## Eventos conceituais
-
-```text
-room:create
-room:join
-room:leave
-room:participants
-
-webrtc:offer
-webrtc:answer
-webrtc:ice-candidate
-
-screen:started
-screen:stopped
-
-microphone:state
-
-chat:send
-chat:message
-```
-
-## Tarefas
-
-* [x] Centralizar nomes — `shared/events.ts:1`, reexportado em `src/lib/events.ts:1` e `server/src/events.ts:1`
-* [x] Criar tipos TypeScript — payloads de sala, peers, tela, microfone, presença e chat em `shared/events.ts:20`
-* [x] Validar payloads — schemas Zod em `server/src/validation.ts:1` para sala, saída, tela, microfone, chat e signaling
-* [x] Não espalhar strings arbitrárias pelo projeto — frontend e backend importam `EVENTS`
-* [x] Validar participação antes de encaminhar eventos — sala + `socket.id` verificados em signaling, chat, tela e microfone (`server/src/index.ts:95`)
-
-## Validação
-
-* `server`: `npm run typecheck` e `npm run build` passaram; runtime ESM validado com `npm start`
-* `client`: `npm run lint`, `npx tsc --noEmit` e `npm run build` passaram
-* Teste de contrato: membro recebeu `microphone:state`; payload de sala inválido foi ignorado
-* Teste de segurança: signaling de socket fora da sala não foi encaminhado
-
-Próxima fase requer autorização explícita: **FASE 7 — Signaling WebRTC**.
-
----
-
-# FASE 7 — Signaling WebRTC
-
-**Status:** `CONCLUÍDA`
-
-## Tarefas
-
-* [x] Criar `RTCPeerConnection` — `src/hooks/useWebRTCSignaling.ts:39`
-* [x] Configurar STUN — `stun:stun.l.google.com:19302` (`src/hooks/useWebRTCSignaling.ts:22`)
-* [x] Criar offer — host cria data channel de controle e SDP (`src/hooks/useWebRTCSignaling.ts:78`)
-* [x] Enviar offer por WebSocket — `webrtc:offer`
-* [x] Receber offer — `src/hooks/useWebRTCSignaling.ts:96`
-* [x] Criar answer — `src/hooks/useWebRTCSignaling.ts:103`
-* [x] Enviar answer — `webrtc:answer`
-* [x] Receber answer — `src/hooks/useWebRTCSignaling.ts:116`
-* [x] Enviar ICE candidate — `src/hooks/useWebRTCSignaling.ts:43`
-* [x] Receber ICE candidate — `src/hooks/useWebRTCSignaling.ts:127`
-* [x] Validar `peerId` — servidor verifica origem e destino pertencentes à mesma sala (`server/src/index.ts:105`)
-* [x] Impedir signaling entre salas diferentes — validação de `roomId` no servidor e cliente
-
-## Implementação
-
-* `Map<peerId, RTCPeerConnection>` mantido no hook; host inicia offer para cada peer online
-* ICE recebido antes do SDP remoto é armazenado e aplicado após `setRemoteDescription`
-* Estados expostos na UI: `new`, `connecting`, `connected`, `disconnected`, `failed`, `closed`
-* Esta fase negocia somente canal de controle; mídia não foi adicionada ainda e será implementada nas Fases 8–10
-
-## Validação
-
-* `client`: `npm run lint`, `npx tsc --noEmit` e `npm run build` passaram
-* `server`: `npm run typecheck`, `npm run build` e `npm start` passaram
-* Teste Socket.IO: offer, answer e ICE foram encaminhados entre membros
-* Teste de segurança: signaling de socket fora da sala foi bloqueado
-
-Próxima fase requer autorização explícita: **FASE 8 — Primeira conexão P2P**.
-
-## Resultado
-
-```text
-Peer A
-↓ offer
-
-Vercel
-↓ encaminha
-
-Peer B
-↓ answer
-
-Vercel
-↓ encaminha
-
-Peer A
-
-↓ ICE
-
-WebRTC conectado
-```
-
----
-
-# FASE 8 — Primeira conexão P2P
-
-**Status:** `CONCLUÍDA`
-
-## Objetivo
-
-Conectar somente dois participantes.
-
-## Tarefas
-
-* [x] PC A cria sala — Fase 4
-* [x] PC B entra — Fase 4
-* [x] Criar conexão — `src/hooks/useWebRTCSignaling.ts:37`, uma conexão por peer
-* [x] Confirmar ICE — validado com dois navegadores durante as Fases 9 e 10
-* [x] Confirmar `connected` — conexão P2P validada durante o compartilhamento remoto das Fases 9 e 10
-* [x] Tratar `connecting` — `src/hooks/useWebRTCSignaling.ts:50`
-* [x] Tratar `disconnected` — `src/hooks/useWebRTCSignaling.ts:55`
-* [x] Tratar `failed` — ICE e operações SDP atualizam o estado
-* [x] Fechar conexão ao sair — cleanup do hook em `src/hooks/useWebRTCSignaling.ts:173`
-
-## Implementação
-
-* Host cria um data channel de controle apenas para produzir o SDP da primeira negociação; nenhuma mídia é enviada nesta fase
-* Signaling encaminha offer/answer/ICE pelo Render, sem transportar áudio ou vídeo
-* A sala mostra `connectionState / ICE state` por peer para validação manual
-
-## Validação
-
-Abrir `https://vynk-dun.vercel.app` em dois navegadores, criar/entrar na mesma sala e confirmar em ambos:
-
-```text
-connection: connected
-ICE: connected ou completed
-```
-
-Conexão, ICE e cleanup confirmados no fluxo real usado para validar as Fases 9 e 10.
-
-## Marco
-
-```text
-PC A ←════════ WebRTC ════════→ PC B
-```
-
----
-
-# FASE 9 — Compartilhamento de tela
-
-**Status:** `CONCLUÍDA`
-
-## API
-
-```ts
-navigator.mediaDevices.getDisplayMedia({
-  video: true,
-  audio: true,
-});
-```
-
-## Tarefas
-
-* [x] Criar botão compartilhar — somente host (`src/app/room/[code]/page.tsx:135`)
-* [x] Solicitar permissão — ação explícita chama `getDisplayMedia`
-* [x] Capturar tela — `src/hooks/useScreenShare.ts:17`
-* [x] Separar vídeo — `getVideoTracks()` e `getAudioTracks()` mantidos no `MediaStream`
-* [x] Detectar áudio quando disponível — áudio é opcional e não bloqueia a captura de vídeo
-* [x] Adicionar tracks — `RTCPeerConnection.addTrack` e renegociação (`src/hooks/useWebRTCSignaling.ts:38`)
-* [x] Mostrar preview local — `<video>` com `srcObject` (`src/app/room/[code]/page.tsx:125`)
-* [x] Tratar permissão negada — mensagem amigável `Permissão para compartilhar a tela foi negada.`
-* [x] Funcionar sem áudio da tela — somente o track de vídeo é obrigatório
 
 ## Validação pendente
 
-* [x] Host autoriza captura em navegador real — confirmado pelo usuário
-* [x] Preview local aparece — confirmado pelo usuário
-* [ ] Participante remoto recebe a tela — validação final fica na Fase 10
+### Salas e aprovação
 
-Próxima fase requer autorização explícita: **FASE 10 — Recepção da tela**.
+- [ ] Testar lista vazia e lista com várias salas em produção
+- [ ] Testar pedido aprovado em dois navegadores reais
+- [ ] Testar pedido recusado
+- [ ] Testar pedido cancelado ou expirado
+- [ ] Testar duas solicitações simultâneas para a mesma sala
+- [ ] Confirmar que sala cheia não permite nova aprovação
 
----
+### WebRTC e redes
 
-# FASE 10 — Recepção da tela
+- [ ] Testar 2 participantes em redes diferentes
+- [ ] Testar 3 participantes em três navegadores
+- [ ] Testar 4 participantes
+- [ ] Testar 5 participantes
+- [ ] Testar Wi-Fi, 4G/5G e provedores diferentes
+- [ ] Confirmar tela para todos os participantes
+- [ ] Confirmar voz entre todos os pares
+- [ ] Confirmar reconexão sem peers duplicados
+- [ ] Confirmar encerramento correto de câmera, microfone e tela ao sair
 
-**Status:** `CONCLUÍDA`
+### TURN e consumo
 
-## Tarefas
+- [ ] Confirmar no navegador se a conexão usa `host`, `srflx` ou `relay`
+- [ ] Validar `GET /turn` com variáveis reais do Render
+- [ ] Testar uma rede que exija relay
+- [ ] Medir upload com 2, 3 e 5 participantes
+- [ ] Comparar qualidade do áudio da tela em voz, vídeo e música
+- [ ] Confirmar que `NEXT_PUBLIC_FORCE_TURN` permanece desligado fora do diagnóstico
+- [ ] Registrar custo e volume de tráfego do Cloudflare TURN
 
-* [x] Receber track de vídeo — `ontrack` em `src/hooks/useWebRTCSignaling.ts:42`
-* [x] Criar stream remoto — `remoteStreams` por `peerId` (`src/hooks/useWebRTCSignaling.ts:43`)
-* [x] Renderizar stream — `<video srcObject>` para host/participante (`src/app/room/[code]/page.tsx:125`)
-* [x] Receber áudio quando disponível — áudio da mesma `MediaStream` com `muted={false}` no participante
-* [x] Limpar stream ao terminar — `screen:stopped` e remoção do peer limpam streams (`src/app/room/[code]/page.tsx:37`, `src/hooks/useWebRTCSignaling.ts:166`)
+### PWA e interface
 
-## Validação pendente
-
-* [x] Host compartilha tela em um navegador — tela inteira exibida corretamente, confirmado pelo usuário após ajuste de transceivers
-* [x] Participante remoto vê a tela em outro navegador — sem congelamento após ajuste de tracks, confirmado pelo usuário
-* [x] Áudio remoto é reproduzido quando disponibilizado pelo navegador/OS — confirmado pelo usuário
-* [x] Encerrar compartilhamento remove a tela remota sem imagem congelada — confirmado pelo usuário
-
-Limitação observada: ao escolher uma única aba com áudio no seletor nativo, o navegador fixa a captura nessa aba. Para trocar de aba durante a transmissão, selecionar `Tela inteira` e habilitar áudio do sistema quando o navegador/OS oferecer essa opção. Não há workaround implementado para contornar essa restrição.
-
-Correção aplicada: transceptores de vídeo/áudio são negociados desde a conexão inicial e as faixas são atualizadas com `replaceTrack`, evitando congelamento durante a captura (`src/hooks/useWebRTCSignaling.ts:41`, `src/hooks/useWebRTCSignaling.ts:115`).
-
-Próxima fase requer autorização explícita: **FASE 11 — Parar compartilhamento**. Aguardando autorização do usuário.
-
-## PRIMEIRO GRANDE MARCO
-
-```text
-PC A
-↓
-cria sala
-
-PC B
-↓
-entra
-
-PC A
-↓
-compartilha tela
-
-PC B
-↓
-VÊ A TELA
-```
-
-Somente depois disso avançar para voz e recursos secundários.
+- [ ] Instalar no Chrome/Edge desktop
+- [ ] Instalar no Android
+- [ ] Instalar no iOS pelo menu de compartilhamento
+- [ ] Confirmar abertura em modo standalone
+- [ ] Revisar home em 390px, 768px e 1440px
+- [ ] Validar navegação por teclado no modal de nome e nos pedidos do host
 
 ---
 
-# FASE 11 — Parar compartilhamento
+## Próximas prioridades
 
-**Status:** `CONCLUÍDA`
-
-## Tarefas
-
-* [x] Botão parar — controle do host alterna entre compartilhar e parar
-* [x] Implementar `track.onended` — encerramento pelo seletor nativo usa o mesmo fluxo do botão
-* [x] Executar `track.stop()` — todas as faixas da captura são encerradas
-* [x] Remover/substituir track — senders recebem `replaceTrack(null)` quando o stream local é limpo
-* [x] Atualizar estado local — estado retorna a `not-sharing`
-* [x] Informar participantes — host emite `screen:stopped`, validado pelo servidor
-* [x] Limpar player — streams local e remoto são removidos
-* [x] Evitar imagem congelada — remoção de tracks e evento remoto foram validados na Fase 10
-
-## Implementação e validação
-
-* Encerramento manual e nativo centralizados em `useScreenShare`, sem emissão duplicada
-* Cleanup encerra a captura ao desmontar a página
-* Solicitações de captura pendentes são invalidadas no unmount para impedir stream órfão após o seletor nativo
-* Fluxo remoto já validado na Fase 10: o participante volta ao estado de espera sem quadro congelado
-* `client`: lint, typecheck e build executados após a consolidação da fase
-* `server`: typecheck e build executados após a consolidação da fase
-
-Próxima fase requer autorização explícita: **FASE 12 — Microfone**.
+1. Validar entrada por lista e aprovação em produção.
+2. Completar testes com 3–5 participantes e redes diferentes.
+3. Medir `bytesSent`, candidato ICE selecionado, RTT e perda por peer.
+4. Ajustar bitrate somente com base nas medições de qualidade e custo.
+5. Adicionar testes automatizados de contrato para lista, pedido, aprovação e recusa.
+6. Melhorar compatibilidade de ícones PWA com versões PNG 192x192 e 512x512.
+7. Avaliar persistência externa somente se salas em memória se tornarem insuficientes.
 
 ---
 
-# FASE 12 — Microfone
+## Fora do escopo atual
 
-**Status:** `EM ANDAMENTO`
-
-## API
-
-```ts
-navigator.mediaDevices.getUserMedia({
-  audio: true,
-});
-```
-
-## Tarefas
-
-* [x] Solicitar microfone — ação explícita em `useMicrophone`, nunca automática ao entrar
-* [x] Capturar track — `getUserMedia({ audio: true })` mantém stream e faixa ativos
-* [x] Adicionar ao peer — transceiver de áudio dedicado, separado do áudio da tela
-* [x] Mostrar estado — controle exibe solicitando, ativo e erro
-* [x] Tratar permissão negada — mensagem orienta liberar o acesso e tentar novamente
-* [x] Tratar dispositivo inexistente — mensagem orienta conectar um microfone
-* [x] Parar track no cleanup — captura ativa e solicitação pendente são encerradas/invalidadas no unmount
-
-## Validação pendente
-
-* [ ] Autorizar o microfone em um navegador real e confirmar `Microfone ativo`
-* [ ] Confirmar no segundo participante que o estado `micMuted: false` é recebido
-* [ ] Sair da sala e confirmar que o indicador de captura do navegador é encerrado
-
-A reprodução e validação de voz entre os participantes pertencem à **FASE 13 — Voz bidirecional**.
+- contas e login;
+- banco de dados de salas;
+- salas permanentes;
+- histórico persistente de chat;
+- gravação;
+- upload ou armazenamento de mídia;
+- SFU/MCU;
+- Redis, filas ou mensageria externa;
+- aplicativo nativo separado;
+- pagamentos e assinaturas;
+- DRM ou tentativa de contornar proteções do navegador.
 
 ---
 
-# FASE 13 — Voz bidirecional
-
-**Status:** `CONCLUÍDA`
-
-## Marco
-
-```text
-PC A fala
-↓
-PC B ouve
-
-PC B fala
-↓
-PC A ouve
-```
-
-## Tarefas
-
-* [x] Envio A → B — transceiver dedicado aceita microfone do host e do participante
-* [x] Envio B → A — answer negocia o mesmo canal como `sendrecv`
-* [x] Reproduzir áudio remoto — um elemento `<audio autoPlay>` recebe o stream de cada peer
-* [x] Evitar áudio duplicado — streams e players são indexados por `peerId`, com deduplicação de tracks
-* [x] Tratar saída de participante — stream, player e estado de autoplay são removidos no cleanup do peer
-
-## Compatibilidade com autoplay
-
-Se o navegador bloquear a reprodução automática, a sala exibe `Liberar áudio da chamada`. O clique tenta reproduzir novamente todos os streams bloqueados após uma ação explícita do usuário.
-
-## Validação no deploy
-
-* [x] Voz do host para o participante confirmada em dois navegadores
-* [x] Voz do participante para o host confirmada em dois navegadores
-* [x] Ausência de eco/áudio duplicado confirmada
-* [x] Saída da sala remove o áudio remoto corretamente
-
----
-
-# FASE 14 — Mute / Unmute
-
-**Status:** `CONCLUÍDA`
-
-## Tarefas
-
-* [x] Mutar — desabilita a faixa sem encerrar a captura ou renegociar WebRTC
-* [x] Desmutar — reativa a mesma faixa com ação explícita
-* [x] Mostrar estado local — botão indica Mutar/Desmutar e usa `aria-pressed`
-* [x] Mostrar estado remoto — cada participante exibe o indicador de microfone
-* [x] Sincronizar via WebSocket — evento `microphone:state` atualiza a sala
-* [x] Recuperar estado após reconexão — o estado atual é reenviado ao reentrar
-
-## Validação no deploy
-
-* [x] Mutar em um navegador e confirmar silêncio no outro
-* [x] Desmutar e confirmar retorno da voz sem recarregar a sala
-* [x] Confirmar atualização do indicador remoto
-* [x] Confirmar preservação do estado após reconexão
-
----
-
-# FASE 15 — Terceiro participante
-
-**Status:** `EM ANDAMENTO`
-
-## Objetivo
-
-Usar uma conexão WebRTC por par de participantes, mantendo a tela do host disponível para todos e a voz em todos os sentidos.
-
-## Tarefas
-
-* [x] Estrutura `Map<peerId, RTCPeerConnection>`
-* [x] Criar conexão por participante — host inicia conexões de tela e voz; participantes iniciam conexões de voz entre si
-* [x] Remover conexão ao sair — cleanup individual remove conexão, streams e estados do peer
-* [x] Evitar peer duplicado — iniciador determinístico entre participantes não-host
-* [x] Compartilhar tela do host para todos
-* [x] Compartilhar voz — cada par negocia um transceptor dedicado de microfone
-
-## Validação pendente
-
-* [ ] Testar sala com host e dois participantes em três navegadores
-* [ ] Confirmar tela do host para os dois participantes
-* [ ] Confirmar voz host → participantes e participantes → host
-* [ ] Confirmar voz entre os dois participantes
-* [ ] Confirmar ausência de ofertas/conexões duplicadas
-* [ ] Sair com um participante e confirmar cleanup sem afetar os demais
-
----
-
-# FASE 16 — Até cinco participantes
-
-**Status:** `EM ANDAMENTO`
-
-## Testes
-
-* [ ] 3 pessoas
-* [ ] 4 pessoas
-* [ ] 5 pessoas
-
-## Tarefas
-
-* [x] Limite máximo — constante compartilhada de 5 participantes, com servidor como autoridade
-* [x] Mensagem de sala cheia — rejeição clara ao tentar entrar na sexta vaga
-* [x] Cleanup individual — peer removido sem encerrar as conexões restantes
-* [x] Preparar análise de CPU — sala/peer mantidos sem renegociação extra
-* [x] Preparar medição de upload do host — métricas de mídia coletadas por conexão
-* [x] Observar qualidade da transmissão — status agregado de mídia baseado em RTT/perda/estado
-
-## Validação pendente
-
-* [ ] Testar sala com 3 pessoas
-* [ ] Testar sala com 4 pessoas
-* [ ] Testar sala com 5 pessoas
-* [ ] Confirmar rejeição da sexta entrada com mensagem de sala cheia
-* [ ] Medir CPU e upload do host durante compartilhamento de tela e voz
-* [ ] Confirmar que a qualidade permanece estável com todos os participantes
-
----
-
-# FASE 17 — Chat
-
-**Status:** `EM ANDAMENTO`
-
-## Tarefas
-
-* [x] Enviar mensagem — botão e Enter enviam pela sala conectada
-* [x] Receber mensagem — evento `chat:message` atualiza o painel em tempo real
-* [x] Autor — cada mensagem identifica o participante
-* [x] Timestamp — horário local é exibido em cada mensagem
-* [x] Histórico temporário — mensagens ficam na sessão e são limitadas às 200 mais recentes
-* [x] Validar vazio — envio vazio é bloqueado no cliente e no servidor
-* [x] Limite de tamanho — limite compartilhado de 500 caracteres
-* [x] Rate limiting básico — servidor limita a 5 mensagens por 10 segundos
-* [x] Validar participação — servidor aceita mensagens apenas de participantes da sala
-* [x] Texto puro — conteúdo é renderizado sem interpretação de HTML
-* [x] Não renderizar HTML arbitrário — JSX mantém tags como texto
-
-## Validação pendente
-
-* [ ] Enviar e receber mensagens entre dois participantes
-* [ ] Confirmar Enter envia e Shift+Enter quebra linha
-* [ ] Confirmar rejeição de mensagem vazia e acima de 500 caracteres
-* [ ] Confirmar rate limiting com mais de 5 mensagens em 10 segundos
-* [ ] Confirmar que HTML/script é exibido como texto, sem execução
-
----
-
-# FASE 18 — Reconexão
-
-**Status:** `EM ANDAMENTO`
-
-## Fluxo
-
-```text
-WebSocket cai
-↓
-reconecta
-↓
-recupera sala
-↓
-recupera participantes
-↓
-reconstrói WebRTC
-```
-
-## Tarefas
-
-* [x] Detectar queda — Socket.IO e WebRTC limpam a sessão antiga
-* [x] Estado `reconnecting` — interface acompanha a tentativa de retorno
-* [x] Reconectar socket — até 5 tentativas automáticas
-* [x] Reentrar na sala — `sessionId` por aba recupera a presença sem bloquear nomes iguais em outras abas
-* [x] Reconstruir peers — nova lista de participantes dispara a malha WebRTC
-* [x] Recuperar estado da transmissão — streams locais continuam disponíveis para nova oferta
-* [x] Evitar duplicação — conexões antigas, listeners e streams remotos são removidos antes da reconstrução
-* [x] Mostrar erro definitivo — após esgotar as tentativas, a sala orienta atualizar a página
-
-## Validação pendente
-
-* [ ] Desconectar e reconectar o navegador dentro da janela de recuperação
-* [ ] Confirmar retorno da lista de participantes
-* [ ] Confirmar retorno de microfone e tela sem duplicação
-* [ ] Confirmar erro após falha definitiva de reconexão
-
-## Validação automatizada
-
-* [x] Atualizar com F5 — a nova conexão assume a sessão, encerra o socket antigo e preserva o host
-* [x] Entrar com o mesmo nome em outra aba — sessões distintas são aceitas
-
----
-
-# FASE 19 — Segurança
-
-**Status:** `EM ANDAMENTO`
-
-## Tarefas
-
-* [x] Validar códigos — schemas rejeitam códigos fora do formato esperado
-* [x] Validar nomes — nomes continuam limitados, normalizados e sem caracteres inválidos
-* [x] Validar peer IDs — IDs restritos a caracteres seguros e tamanho máximo
-* [x] Validar mensagens — tamanho máximo centralizado e conteúdo tratado como texto
-* [x] Validar signaling — SDP e ICE possuem schemas e limites próprios
-* [x] Validar participação — cada evento exige participante ativo na sala informada
-* [x] Verificar host — compartilhamento de tela só pode ser iniciado/parado pelo host
-* [x] Impedir eventos entre salas — destinos de signaling precisam pertencer à mesma sala
-* [x] Limitar payloads — limite HTTP e limite de buffer do Socket.IO configurados
-* [x] Rate limit básico — limites por socket para criação, entrada, chat e signaling
-* [x] Não confiar no frontend — servidor mantém autoridade sobre sala, presença e permissões
-
-## Validação pendente
-
-* [ ] Testar payloads inválidos e oversized no ambiente de deploy
-* [ ] Confirmar isolamento entre duas salas com signaling cruzado
-* [ ] Confirmar bloqueio de tela por participante que não é host
-* [ ] Confirmar respostas de rate limit em criação, entrada, chat e signaling
-
----
-
-# FASE 20 — Interface final do MVP
-
-**Status:** `EM ANDAMENTO`
-
-## Desktop
-
-```text
-┌─────────────────────────────────────────────┐
-│ Sala ABC123                    👥 4         │
-├──────────────────────────────┬──────────────┤
-│                              │ PARTICIPANTES│
-│                              │              │
-│      TELA COMPARTILHADA      ├──────────────┤
-│                              │ CHAT         │
-│                              │              │
-├──────────────────────────────┴──────────────┤
-│ 🎙 Mute   🖥 Compartilhar        🚪 Sair  │
-└─────────────────────────────────────────────┘
-```
-
-## Tarefas
-
-* [x] Desktop — palco dominante, painel lateral e barra de controles
-* [x] Mobile — layout reordenado e controles adaptáveis
-* [x] Participantes — avatares, host, presença e estado do microfone
-* [x] Chat — estado vazio, mensagens, contador e envio acessível
-* [x] Controles — tela, microfone, liberação de áudio e modo tela cheia
-* [x] Loading — entrada na sala e carregamento de participantes
-* [x] Erros — alertas de conexão, mídia e permissões
-* [x] Estado da conexão — conectado, reconectando e sem conexão
-* [x] Estado de compartilhamento — aguardando, ao vivo, tela própria e identificação da fonte escolhida
-* [x] Escolha da tela — interface explica o seletor obrigatório do navegador e recomenda compartilhar a tela inteira
-* [x] Estado do microfone — ativar, mutar, desmutar e erro
-* [x] Acessibilidade — regiões semânticas, foco visível, labels e aria-pressed
-
-## Validação pendente
-
-* [ ] Revisar visualmente em desktop (1440px), tablet (768px) e mobile (390px)
-* [ ] Confirmar fluxo de entrada, chat, microfone e tela no deploy
-* [ ] Confirmar contraste e navegação por teclado nos estados de erro
-* [ ] Fazer inspeção visual manual no navegador — não há aba automatizável disponível neste ambiente
-
----
-
-# FASE 21 — Cleanup e estabilidade
-
-**Status:** `EM ANDAMENTO`
-
-## Ao sair
-
-* [x] Fechar PeerConnections — encerramento centralizado remove callbacks antes de fechar cada peer
-* [x] Parar screen track — saída e desmontagem interrompem todas as faixas capturadas
-* [x] Parar audio track — áudio da tela e streams remotos são interrompidos no descarte
-* [x] Parar microphone track — hook expõe parada explícita e também limpa ao desmontar
-* [x] Remover listeners — Socket.IO, DOM, tracks e data channels removem seus handlers
-* [x] Remover timers — retries ICE, amostragem de qualidade e timeouts de entrada são cancelados
-* [x] Limpar streams — elementos de mídia são pausados e têm `srcObject` removido
-* [x] Limpar participantes — estado local da sala, chat e reprodução é esvaziado ao sair
-* [x] Evitar conexões órfãs — saída explícita ou navegação interna fecha recursos e informa o servidor uma única vez
-
-## Validação automatizada
-
-* [x] Recursos e ciclo do cliente — 5 testes cobrem captura cancelada, trava de saída, tracks, peer e data channel
-* [x] Ciclo da sala — teste versionado confirma remoção, reentrada, reconexão, transferência de host e exclusão da sala vazia
-* [x] Qualidade do código — lint, TypeScript e builds de frontend/servidor sem erros
-
-## Validação pendente
-
-* [ ] Ativar tela e microfone no navegador, sair e confirmar que os indicadores de captura desaparecem
-* [ ] Repetir saída pelo botão, botão voltar e F5 no ambiente de deploy
-
----
-
-# FASE 22 — Testes entre redes
-
-**Status:** `NÃO INICIADA`
-
-## Quantidade
-
-* [ ] 2 participantes
-* [ ] 3
-* [ ] 4
-* [ ] 5
-
-## Redes
-
-* [ ] Mesmo Wi-Fi
-* [ ] Redes diferentes
-* [ ] Wi-Fi ↔ 4G/5G
-* [ ] Dois provedores diferentes
-
-## Navegadores
-
-* [ ] Chrome
-* [ ] Edge
-* [ ] Firefox quando suportado
-
-## Dispositivos
-
-* [ ] Desktop
-* [ ] Notebook
-* [ ] Mobile como espectador
-
-## Resultado observado
-
-* [x] Teste inicial com 3 participantes executado — um espectador recebeu a tela e outro não
-* [ ] Repetir o teste com 3 participantes após as correções de ICE, reprodução e reconexão
-
----
-
-# FASE 23 — Avaliação STUN/TURN
-
-**Status:** `EM ANDAMENTO`
-
-## Objetivo
-
-Descobrir se STUN é suficiente para os usuários reais do MVP.
-
-## Tarefas
-
-* [ ] Registrar conexões bem-sucedidas
-* [ ] Registrar falhas ICE
-* [ ] Identificar redes problemáticas
-* [ ] Verificar se problema é NAT/firewall
-* [x] Não ativar TURN pago automaticamente — suporte opcional permanece desabilitado sem configuração explícita
-
-## Implementação preparada
-
-* [x] Usar STUN do Google e Cloudflare como alternativas
-* [x] Tentar reconstruir a conexão uma vez após falha ICE
-* [x] Permitir configuração opcional de TURN por variáveis de ambiente, sem credenciais padrão
-* [x] Separar a reprodução do vídeo da tela e do áudio para evitar bloqueio de autoplay
-
-## Validação pendente
-
-* [ ] Repetir o teste com 3 participantes em redes diferentes
-* [ ] Confirmar se o aviso de falha identifica o espectador afetado
-* [ ] Só escolher provedor, custo e ativação de TURN se os testes demonstrarem necessidade
-
-## Decisão
-
-### Evidência atual (05/09/2026)
-
-* O teste manual mais recente informado pelo usuário funcionou com voz, tela e chat entre os participantes.
-* O deploy público continua sem TURN configurado; o teste atual indica que STUN atende às redes testadas, mas não garante todas as combinações de NAT/firewall.
-* A configuração opcional de TURN permanece desativada até que um novo teste reproduza falhas frequentes.
-
-Se os testes mostrarem:
-
-```text
-maioria conecta
-↓
-continuar somente STUN
-```
-
-Se houver falhas frequentes:
-
-```text
-analisar TURN
-↓
-explicar custo
-↓
-obter autorização
-↓
-somente então implementar
-```
-
----
-
-# FASE 24 — Validação da Vercel
-
-**Status:** `EM ANDAMENTO`
-
-## Validação executada (05/09/2026)
-
-* Build de produção compilado com Webpack; todas as rotas foram geradas sem erros.
-* Suíte automatizada passou: 7 testes, 0 falhas.
-* Lint e TypeScript passaram.
-* Frontend público respondeu `200` em `https://vynk-dun.vercel.app/`.
-* Healthcheck do frontend respondeu `ok` em `/api/health`.
-* Healthcheck do signaling respondeu `200` em `https://vynk-mwxh.onrender.com/health`.
-* O teste manual do usuário confirmou chat, voz e tela funcionando após o deploy.
-
-## Pendências de validação manual
-
-* Repetir F5, saída e reconexão em uma sala real no deploy.
-* Repetir com 3–5 participantes em redes diferentes e observar se o signaling permanece estável.
-* Confirmar que os limites gratuitos atuais continuam aceitáveis.
-
-## Objetivo
-
-Determinar se a aposta de infraestrutura funcionou.
-
-## Testar
-
-* [ ] WebSockets permanecem utilizáveis
-* [ ] Reconexão funciona
-* [ ] salas não quebram inesperadamente
-* [ ] signaling é confiável
-* [ ] múltiplos participantes funcionam
-* [ ] novo deploy não causa comportamento inesperado
-* [ ] limites gratuitos são aceitáveis
-
-## Resultado A
-
-```text
-VERCEL FUNCIONOU
-↓
-manter arquitetura
-```
-
-## Resultado B
-
-```text
-VERCEL NÃO É CONFIÁVEL PARA SIGNALING
-↓
-não mexer no WebRTC
-↓
-extrair apenas signaling
-↓
-mover realtime para servidor separado
-```
-
-Essa migração futura não deve exigir reescrever frontend ou lógica WebRTC.
-
----
-
-# FASE 25 — MVP CONCLUÍDO
-
-**Status:** `NÃO INICIADA`
-
-O MVP está pronto quando:
-
-```text
-PC 1                           PC 2
-
-Criar sala
-    │
-    ├──────── link ──────────► Entrar
-    │
-Compartilhar tela
-    │
-    ├────── WebRTC ──────────► Ver tela
-    │
-🎙 falar
-    │
-    ├────── WebRTC ──────────► 🔊 ouvir
-    │
-    │                          🎙 falar
-    │◄───── WebRTC ───────────┤
-🔊 ouvir
-    │
-💬 "teste"
-    │
-    ├──── WebSocket ─────────► 💬 "teste"
-```
-
-Depois repetir com:
-
-* [ ] 3 participantes
-* [ ] 4 participantes
-* [ ] 5 participantes
-
----
-
-# Fora do MVP
-
-Não implementar agora:
-
-* banco de dados;
-* contas;
-* login;
-* amigos;
-* salas permanentes;
-* gravação;
-* upload de vídeo;
-* armazenamento de mídia;
-* SFU;
-* MCU;
-* Redis;
-* Kafka;
-* RabbitMQ;
-* microserviços;
-* Kubernetes;
-* aplicativo nativo;
-* assinatura;
-* pagamentos;
-* infraestrutura paga.
-
----
-
-# Definition of Done
-
-Uma tarefa só está concluída quando os itens aplicáveis forem satisfeitos:
-
-* [ ] requisito implementado
-* [ ] mudança focada
-* [ ] TypeScript válido
-* [ ] payload validado
-* [ ] permissões verificadas
-* [ ] erros tratados
-* [ ] loading/conexão tratados
-* [ ] cleanup implementado
-* [ ] testes passam
-* [ ] lint passa
-* [ ] typecheck passa
-* [ ] build passa
-* [ ] sem secrets
-* [ ] sem debug temporário
-* [ ] mídia não passa pelo WebSocket
-* [ ] mídia não é armazenada
-* [ ] sem infraestrutura paga
-* [ ] nenhuma proteção DRM contornada
-
----
-
-# Ordem oficial
-
-```text
-1. Setup
-↓
-2. Vercel
-↓
-3. PROVAR WEBSOCKET NA VERCEL
-↓
-4. Salas
-↓
-5. Presença
-↓
-6. Eventos
-↓
-7. Signaling
-↓
-8. WebRTC P2P
-↓
-9. Compartilhar tela
-↓
-10. Receber tela
-↓
-11. Parar transmissão
-↓
-12. Microfone
-↓
-13. Voz
-↓
-14. Mute
-↓
-15. 3 participantes
-↓
-16. até 5
-↓
-17. Chat
-↓
-18. Reconexão
-↓
-19. Segurança
-↓
-20. Interface
-↓
-21. Cleanup
-↓
-22. Redes diferentes
-↓
-23. STUN/TURN
-↓
-24. Validar aposta Vercel
-↓
-25. MVP
-```
-
----
-
-# Próximo passo oficial
-
-```text
-FASE 1 — Inicialização
-```
-
-Porém o primeiro teste de infraestrutura realmente importante será:
-
-```text
-FASE 3
-PROVAR QUE DOIS CLIENTES
-CONSEGUEM MANTER COMUNICAÇÃO
-REALTIME PELA VERCEL
-```
-
-Se esse teste falhar, não continuar construindo signaling em cima de uma infraestrutura ainda não validada.
+## Definition of Done
+
+Uma mudança funcional só deve ser considerada concluída quando aplicável:
+
+- [ ] requisito implementado;
+- [ ] validação de payload e permissão no servidor;
+- [ ] estados de loading, erro e reconexão tratados;
+- [ ] cleanup de listeners, timers e mídia implementado;
+- [ ] typecheck passa;
+- [ ] lint passa;
+- [ ] testes passam;
+- [ ] build passa;
+- [ ] nenhum segredo versionado;
+- [ ] mídia não passa pelo signaling;
+- [ ] mídia não é armazenada;
+- [ ] documentação atualizada.
