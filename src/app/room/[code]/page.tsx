@@ -9,7 +9,7 @@ import { createRoomLifecycleToken, RoomLifecycleGuard } from "@/lib/mediaLifecyc
 import { useWebRTCSignaling } from "@/hooks/useWebRTCSignaling";
 import { useScreenShare } from "@/hooks/useScreenShare";
 import { useMicrophone } from "@/hooks/useMicrophone";
-import { getRemoteAudioPlaybackState, RemoteAudio, type RemoteAudioPlaybackState } from "@/components/RemoteAudio";
+import { getRemoteAudioPlaybackState, RemoteAudio, resumeRemoteAudioContext, type RemoteAudioPlaybackState } from "@/components/RemoteAudio";
 
 type IconName = "arrow" | "check" | "copy" | "expand" | "lock" | "mic" | "monitor" | "send" | "shrink" | "users" | "volume" | "x";
 
@@ -53,7 +53,7 @@ export default function RoomPage() {
   const [remoteMicrophoneStreams, setRemoteMicrophoneStreams] = useState<Map<string, MediaStream>>(new Map());
   const [audioPlaybackStates, setAudioPlaybackStates] = useState<Map<string, RemoteAudioPlaybackState>>(new Map());
   const [screenVolume, setScreenVolume] = useState(100);
-  const [voiceVolume, setVoiceVolume] = useState(100);
+  const [participantVolumes, setParticipantVolumes] = useState<Map<string, number>>(new Map());
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
   const isHostRef = useRef(false);
@@ -239,7 +239,21 @@ export default function RoomPage() {
       next.delete(`${peerId}:screen`);
       return next;
     });
+    setParticipantVolumes((current) => {
+      if (!current.has(peerId)) return current;
+      const next = new Map(current);
+      next.delete(peerId);
+      return next;
+    });
   }, [roomLifecycle, roomToken]);
+
+  const handleParticipantVolumeChange = useCallback((peerId: string, volume: number) => {
+    setParticipantVolumes((current) => {
+      const next = new Map(current);
+      next.set(peerId, volume);
+      return next;
+    });
+  }, []);
 
   const isRoomActive = useCallback(() => roomLifecycle.isActive(roomToken), [roomLifecycle, roomToken]);
 
@@ -297,6 +311,7 @@ export default function RoomPage() {
     setRemoteStreams(new Map());
     setRemoteMicrophoneStreams(new Map());
     setAudioPlaybackStates(new Map());
+    setParticipantVolumes(new Map());
     setChatMessages([]);
     setChatDraft("");
     setChatError(null);
@@ -392,7 +407,8 @@ export default function RoomPage() {
       event.currentTarget.form?.requestSubmit();
     }
   };
-  const handleEnableCallAudio = () => {
+  const handleEnableCallAudio = async () => {
+    await resumeRemoteAudioContext();
     const players = [...document.querySelectorAll<HTMLAudioElement>("[data-vynk-remote-audio]")];
     for (const player of players) {
       const peerId = player.dataset.vynkRemoteAudio;
@@ -450,7 +466,7 @@ export default function RoomPage() {
         </div>
       </header>
       {(error || socketError) && <div className="vynk-alert" role="alert"><span className="vynk-alert-mark">!</span><span>{error || socketError}</span><button onClick={() => setError(null)} aria-label="Fechar aviso"><Icon name="x" size={15} /></button></div>}
-      {[...remoteMicrophoneStreams.entries()].map(([peerId, stream]) => <RemoteAudio key={peerId} peerId={peerId} stream={stream} volume={voiceVolume / 100} onPlaybackStateChange={handleAudioPlaybackState} />)}
+      {[...remoteMicrophoneStreams.entries()].map(([peerId, stream]) => <RemoteAudio key={peerId} peerId={peerId} stream={stream} volume={(participantVolumes.get(peerId) ?? 100) / 100} onPlaybackStateChange={handleAudioPlaybackState} />)}
       {[...remoteStreams.entries()].filter(([, stream]) => stream.getAudioTracks().some((track) => track.readyState === "live")).map(([peerId, stream]) => <RemoteAudio key={`${peerId}:screen`} peerId={`${peerId}:screen`} stream={stream} volume={screenVolume / 100} onPlaybackStateChange={handleAudioPlaybackState} />)}
       <main className="vynk-workspace">
         <section className="vynk-stage-column" aria-label="Palco da sala">
@@ -469,9 +485,8 @@ export default function RoomPage() {
               {microphone.state === "active" ? <button onClick={handleToggleMicrophone} aria-pressed={microphone.muted} className={`vynk-control-button ${microphone.muted ? "muted" : "active"}`}><span className={`vynk-mic-indicator ${microphone.muted ? "muted" : ""}`} aria-hidden="true"><Icon name="mic" size={17} /></span><span>{microphone.muted ? "Desmutar" : "Mutar"}</span></button> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="vynk-control-button muted"><span className="vynk-mic-indicator muted" aria-hidden="true"><Icon name="mic" size={17} /></span><span>{microphone.state === "requesting-permission" ? "Solicitando…" : microphone.state === "error" ? "Tentar microfone" : "Ativar microfone"}</span></button>}
                {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="vynk-control-button audio"><Icon name="volume" size={17} /><span>Liberar áudio</span></button></>}
              </div>
-             <div className="vynk-volume-controls" aria-label="Volumes da chamada">
+             <div className="vynk-volume-controls" aria-label="Volume da transmissão">
                <label className="vynk-volume-control"><span className="vynk-volume-label"><Icon name="volume" size={15} /><span>Transmissão</span><output>{screenVolume}%</output></span><input type="range" min="0" max="100" step="1" value={screenVolume} onChange={(event) => setScreenVolume(Number(event.currentTarget.value))} aria-label="Volume da transmissão" /></label>
-               <label className="vynk-volume-control"><span className="vynk-volume-label"><Icon name="mic" size={15} /><span>Vozes</span><output>{voiceVolume}%</output></span><input type="range" min="0" max="100" step="1" value={voiceVolume} onChange={(event) => setVoiceVolume(Number(event.currentTarget.value))} aria-label="Volume das vozes dos participantes" /></label>
              </div>
              <div className="vynk-media-status"><span className={`vynk-status-dot ${mediaQuality === "instável" ? "warning" : mediaQuality === "estável" ? "online" : ""}`} />{screen.state === "sharing" ? `${screenSurfaceLabel} sendo compartilhada` : Object.keys(peerStates).length === 0 ? "Aguardando participantes" : mediaQuality ? `Mídia ${mediaQuality}` : "Conectando mídia"}</div>
           </div>
@@ -486,7 +501,7 @@ export default function RoomPage() {
             <ul className="vynk-participant-list">
               {participants.map((p) => (
                 <li key={p.id} className="vynk-participant">
-                  <span className={`vynk-avatar ${p.id === myId ? "mine" : ""}`}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-name"><span>{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}{isHost && !p.isHost && p.presence === "online" && <button onClick={() => handleScreenPermission(p.id, !p.canShareScreen)} className="vynk-permission-button">{p.canShareScreen ? "Revogar tela" : "Permitir tela"}</button>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`}><span className="vynk-status-dot" />{p.micMuted ? "mutado" : "falando"}</span>
+                   <span className={`vynk-avatar ${p.id === myId ? "mine" : ""}`}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-name"><span>{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}{isHost && !p.isHost && p.presence === "online" && <button onClick={() => handleScreenPermission(p.id, !p.canShareScreen)} className="vynk-permission-button">{p.canShareScreen ? "Revogar tela" : "Permitir tela"}</button>}{p.id !== myId && <label className="vynk-participant-volume"><span>Voz <output>{participantVolumes.get(p.id) ?? 100}%</output></span><input type="range" min="0" max="200" step="1" value={participantVolumes.get(p.id) ?? 100} disabled={p.presence !== "online"} onChange={(event) => handleParticipantVolumeChange(p.id, Number(event.currentTarget.value))} aria-label={`Volume da voz de ${p.name}`} /></label>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`}><span className="vynk-status-dot" />{p.micMuted ? "mutado" : "falando"}</span>
                 </li>
               ))}
               {participants.length === 0 && <li className="vynk-empty-row"><span className="vynk-skeleton" />Carregando participantes…</li>}

@@ -31,7 +31,7 @@ const signalingUrl = process.env.NEXT_PUBLIC_SIGNALING_URL || "https://vynk-mwxh
 const forceRelay = process.env.NEXT_PUBLIC_FORCE_TURN === "true";
 
 const SCREEN_VIDEO_MAX_BITRATE = 3_500_000;
-const SCREEN_AUDIO_MAX_BITRATE = 128_000;
+const SCREEN_AUDIO_MAX_BITRATE = 256_000;
 
 async function limitScreenVideoBitrate(sender: RTCRtpSender): Promise<void> {
   try {

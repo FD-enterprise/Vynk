@@ -8,6 +8,19 @@ export function getRemoteAudioPlaybackState(cause: unknown): RemoteAudioPlayback
   return cause instanceof DOMException && cause.name === "NotAllowedError" ? "blocked" : "error";
 }
 
+let remoteAudioContext: AudioContext | null = null;
+
+function getRemoteAudioContext(): AudioContext | null {
+  if (typeof window === "undefined" || !window.AudioContext) return null;
+  remoteAudioContext ??= new window.AudioContext();
+  return remoteAudioContext;
+}
+
+export async function resumeRemoteAudioContext(): Promise<void> {
+  const context = getRemoteAudioContext();
+  if (context?.state === "suspended") await context.resume().catch(() => undefined);
+}
+
 type Props = {
   peerId: string;
   stream: MediaStream;
@@ -17,6 +30,23 @@ type Props = {
 
 export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const gainRef = useRef<GainNode | null>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    const context = getRemoteAudioContext();
+    if (!audio || !context) return;
+    const source = context.createMediaElementSource(audio);
+    const gain = context.createGain();
+    source.connect(gain).connect(context.destination);
+    gainRef.current = gain;
+    audio.volume = 1;
+    return () => {
+      source.disconnect();
+      gain.disconnect();
+      gainRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -30,7 +60,9 @@ export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: P
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio) audio.volume = Math.min(1, Math.max(0, volume));
+    const nextVolume = Math.min(2, Math.max(0, volume));
+    if (gainRef.current) gainRef.current.gain.value = nextVolume;
+    else if (audio) audio.volume = Math.min(1, nextVolume);
   }, [volume]);
 
   useEffect(() => {
@@ -40,6 +72,7 @@ export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: P
 
     const play = async () => {
       try {
+        await resumeRemoteAudioContext();
         await audio.play();
         if (!cancelled) onPlaybackStateChange(peerId, "playing");
       } catch (cause) {
