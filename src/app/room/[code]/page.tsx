@@ -13,6 +13,7 @@ import { getRemoteAudioPlaybackState, RemoteAudio, resumeRemoteAudioContext, typ
 
 type IconName = "arrow" | "check" | "copy" | "expand" | "lock" | "mic" | "monitor" | "send" | "shrink" | "users" | "volume" | "x";
 type JoinRequest = { roomId: string; participantId: string; participantName: string };
+type JoinPhase = "connecting" | "pending" | "joined" | "rejected";
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, string[]> = {
@@ -45,7 +46,9 @@ export default function RoomPage() {
   const [isHost, setIsHost] = useState(false);
   const [screenSharerId, setScreenSharerId] = useState<string | null>(null);
   const [screenRequest, setScreenRequest] = useState<{ participantId: string; participantName: string } | null>(null);
-  const [joinRequest, setJoinRequest] = useState<JoinRequest | null>(null);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [joinRequestNotificationsEnabled, setJoinRequestNotificationsEnabled] = useState(true);
+  const [joinPhase, setJoinPhase] = useState<JoinPhase>("connecting");
   const [screenRequestSent, setScreenRequestSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -59,6 +62,7 @@ export default function RoomPage() {
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
   const isHostRef = useRef(false);
+  const joinPhaseRef = useRef<JoinPhase>("connecting");
   const screenRequestSentRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -81,6 +85,11 @@ export default function RoomPage() {
   const stopMicrophone = microphone.stop;
   const microphoneStateRef = useRef(microphone.state);
   const microphoneMutedRef = useRef(microphone.muted);
+
+  const updateJoinPhase = (phase: JoinPhase) => {
+    joinPhaseRef.current = phase;
+    setJoinPhase(phase);
+  };
 
   useEffect(() => {
     isHostRef.current = isHost;
@@ -109,23 +118,26 @@ export default function RoomPage() {
     if (!socket || !roomId || needsName) return;
     const effectiveName = (name || promptName).trim();
     if (!effectiveName) return;
-    const onJoined = (data: { roomId: string; participants: Participant[]; chatMessages?: ChatMessage[]; screenSharerId?: string | null }) => {
+    const onJoined = (data: { roomId: string; participants: Participant[]; chatMessages?: ChatMessage[]; screenSharerId?: string | null; joinRequestNotificationsEnabled?: boolean }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
+      updateJoinPhase("joined");
       setParticipants(data.participants);
       setChatMessages(data.chatMessages ?? []);
       setScreenSharerId(data.screenSharerId ?? null);
-      setJoinRequest(null);
+      setJoinRequests([]);
       screenRequestSentRef.current = false;
       setScreenRequestSent(false);
       const me = data.participants.find((p) => p.id === socket.id);
       setIsHost(!!me?.isHost);
+      setJoinRequestNotificationsEnabled(data.joinRequestNotificationsEnabled ?? true);
       socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted: microphoneStateRef.current !== "active" || microphoneMutedRef.current });
     };
     const onParticipants = (data: { roomId: string; participants: Participant[] }) => { if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return; setParticipants(data.participants); const me = data.participants.find((p) => p.id === socket.id); setIsHost(!!me?.isHost); };
-    const onHostChanged = (data: { roomId: string; hostId: string }) => { if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return; setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId, canShareScreen: p.id === data.hostId ? true : p.canShareScreen }))); setIsHost(data.hostId === socket.id); };
+    const onHostChanged = (data: { roomId: string; hostId: string; joinRequestNotificationsEnabled?: boolean }) => { if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return; setParticipants((prev) => prev.map((p) => ({ ...p, isHost: p.id === data.hostId, canShareScreen: p.id === data.hostId ? true : p.canShareScreen }))); setIsHost(data.hostId === socket.id); if (data.hostId === socket.id) setJoinRequestNotificationsEnabled(data.joinRequestNotificationsEnabled ?? true); };
     const onError = (data: { message: string; roomId?: string }) => {
       if (!roomLifecycle.isActive(roomToken) || (data.roomId && data.roomId !== roomId)) return;
       setError(data.message);
+      if (joinPhaseRef.current !== "joined") updateJoinPhase("rejected");
       if (data.message.includes("autorizou") || data.message.includes("Outra pessoa")) stopScreen();
     };
     const onSocketDisconnect = () => { if (roomLifecycle.isActive(roomToken)) setParticipants([]); };
@@ -145,8 +157,11 @@ export default function RoomPage() {
     };
     const onJoinRequest = (data: JoinRequest) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId || !isHostRef.current) return;
-      setJoinRequest(data);
+      setJoinRequests((current) => current.some((request) => request.participantId === data.participantId) ? current : [...current, data]);
     };
+    const onJoinSettingsUpdated = (data: { roomId: string; enabled: boolean }) => { if (data.roomId === roomId) setJoinRequestNotificationsEnabled(data.enabled); };
+    const onJoinPending = (data: { roomId: string }) => { if (data.roomId === roomId) updateJoinPhase("pending"); };
+    const onJoinResult = (data: { roomId: string; allowed: boolean; message: string }) => { if (data.roomId !== roomId) return; if (!data.allowed) { setError(data.message); updateJoinPhase("rejected"); } };
     const onScreenPermission = (data: { roomId: string; participantId: string; allowed: boolean }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId || data.participantId !== socket.id) return;
       const wasRequest = screenRequestSentRef.current;
@@ -172,6 +187,9 @@ export default function RoomPage() {
     socket.on(EVENTS.ROOM_ERROR, onError);
     socket.on(EVENTS.SCREEN_REQUEST, onScreenRequest);
     socket.on(EVENTS.ROOM_JOIN_REQUEST, onJoinRequest);
+    socket.on(EVENTS.ROOM_JOIN_SETTINGS_UPDATED, onJoinSettingsUpdated);
+    socket.on(EVENTS.ROOM_JOIN_PENDING, onJoinPending);
+    socket.on(EVENTS.ROOM_JOIN_RESULT, onJoinResult);
     socket.on(EVENTS.SCREEN_PERMISSION, onScreenPermission);
     socket.on(EVENTS.SCREEN_STARTED, onScreenStarted);
     socket.on(EVENTS.SCREEN_STOPPED, onScreenStopped);
@@ -181,6 +199,7 @@ export default function RoomPage() {
     const emitJoin = () => { if (roomLifecycle.isActive(roomToken)) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() }); };
     if (socket.connected) emitJoin(); else socket.once("connect", emitJoin);
     return () => {
+      if (joinPhaseRef.current === "pending") socket.emit(EVENTS.ROOM_JOIN_CANCEL, { roomId });
       socket.off(EVENTS.ROOM_JOINED, onJoined);
       socket.off(EVENTS.ROOM_PARTICIPANTS, onParticipants);
       socket.off(EVENTS.PRESENCE_UPDATE, onParticipants);
@@ -188,6 +207,9 @@ export default function RoomPage() {
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off(EVENTS.SCREEN_REQUEST, onScreenRequest);
       socket.off(EVENTS.ROOM_JOIN_REQUEST, onJoinRequest);
+      socket.off(EVENTS.ROOM_JOIN_SETTINGS_UPDATED, onJoinSettingsUpdated);
+      socket.off(EVENTS.ROOM_JOIN_PENDING, onJoinPending);
+      socket.off(EVENTS.ROOM_JOIN_RESULT, onJoinResult);
       socket.off(EVENTS.SCREEN_PERMISSION, onScreenPermission);
       socket.off(EVENTS.SCREEN_STARTED, onScreenStarted);
       socket.off(EVENTS.SCREEN_STOPPED, onScreenStopped);
@@ -315,7 +337,7 @@ export default function RoomPage() {
     setParticipants([]);
     setScreenSharerId(null);
     setScreenRequest(null);
-    setJoinRequest(null);
+    setJoinRequests([]);
     screenRequestSentRef.current = false;
     setScreenRequestSent(false);
     setRemoteStreams(new Map());
@@ -349,6 +371,10 @@ export default function RoomPage() {
   }, [releaseRoom, roomId]);
 
   const handleLeave = () => { releaseRoom(); router.push("/"); };
+  const handleCancelJoin = () => {
+    if (socket?.connected) socket.emit(EVENTS.ROOM_JOIN_CANCEL, { roomId });
+    router.push("/");
+  };
   const handleCopy = async () => { await navigator.clipboard.writeText(`${window.location.origin}/room/${roomId}`); };
   const handleRequestScreen = () => {
     if (!socket?.connected || isHost || screenRequestSent) return;
@@ -364,7 +390,12 @@ export default function RoomPage() {
   const handleJoinDecision = (participantId: string, allowed: boolean) => {
     if (!socket?.connected || !isHost) return;
     socket.emit(EVENTS.ROOM_JOIN_DECISION, { roomId, participantId, allowed });
-    setJoinRequest(null);
+    setJoinRequests((current) => current.filter((request) => request.participantId !== participantId));
+  };
+  const handleJoinNotificationsChange = (enabled: boolean) => {
+    if (!socket?.connected || !isHost) return;
+    setJoinRequestNotificationsEnabled(enabled);
+    socket.emit(EVENTS.ROOM_JOIN_SETTINGS, { roomId, enabled });
   };
   const handleShare = async () => {
     const me = participants.find((participant) => participant.id === socket?.id);
@@ -465,6 +496,23 @@ export default function RoomPage() {
     );
   }
 
+  if (joinPhase !== "joined") {
+    const isPending = joinPhase === "pending";
+    return (
+      <div className="vynk-gate">
+        <div className="vynk-gate-glow" aria-hidden="true" />
+        <div className="vynk-gate-card">
+          <div className="vynk-brand"><span className="vynk-brand-mark">v</span><span>vynk</span></div>
+          <span className="vynk-eyebrow">ENTRADA NA SALA</span>
+          <h1>{isPending ? "Pedido enviado" : joinPhase === "rejected" ? "Entrada não autorizada" : "Conectando à sala"}</h1>
+          <p>{isPending ? <>O host precisa aprovar sua entrada na sala <strong>{roomId}</strong>. Você será conectado assim que ele permitir.</> : error || socketError || "Aguarde enquanto verificamos sua entrada."}</p>
+          {isPending ? <button onClick={handleCancelJoin} className="vynk-primary-button">Cancelar pedido <Icon name="x" size={17} /></button> : <button onClick={() => router.push("/")} className="vynk-primary-button">Voltar ao início <Icon name="arrow" size={17} /></button>}
+          <span className="vynk-gate-note"><Icon name="lock" size={13} /> A entrada é aprovada pelo host.</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="vynk-shell">
       <header className="vynk-topbar">
@@ -511,8 +559,9 @@ export default function RoomPage() {
         </section>
         <aside className="vynk-sidebar">
           <section className="vynk-panel vynk-participants-panel" aria-labelledby="participants-title">
-           <div className="vynk-panel-heading"><div><span className="vynk-eyebrow">NA SALA</span><h2 id="participants-title">Participantes</h2></div><span className="vynk-count-pill">{participantCount} / {MAX_PARTICIPANTS}</span></div>
-             {isHost && joinRequest && <div className="vynk-join-request" role="status"><strong>{joinRequest.participantName} quer entrar</strong><span>Essa pessoa está aguardando sua permissão para entrar na sala.</span><div><button onClick={() => handleJoinDecision(joinRequest.participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleJoinDecision(joinRequest.participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
+            <div className="vynk-panel-heading"><div><span className="vynk-eyebrow">NA SALA</span><h2 id="participants-title">Participantes</h2></div><span className="vynk-count-pill">{participantCount} / {MAX_PARTICIPANTS}</span></div>
+              {isHost && <label className="vynk-join-settings"><input type="checkbox" checked={joinRequestNotificationsEnabled} onChange={(event) => handleJoinNotificationsChange(event.currentTarget.checked)} /> Receber notificações de pedidos para entrar</label>}
+              {isHost && joinRequests[0] && <div className="vynk-join-request" role="status"><strong>{joinRequests[0].participantName} quer entrar</strong><span>Essa pessoa está aguardando sua permissão para entrar na sala.</span><div><button onClick={() => handleJoinDecision(joinRequests[0].participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleJoinDecision(joinRequests[0].participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
              {isHost && screenRequest && <div className="vynk-screen-request" role="status"><strong>{screenRequest.participantName} quer transmitir</strong><span>Autorize essa pessoa a compartilhar a tela.</span><div><button onClick={() => handleScreenPermission(screenRequest.participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleScreenPermission(screenRequest.participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
             <ul className="vynk-participant-list">
               {participants.map((p) => (

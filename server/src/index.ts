@@ -3,7 +3,7 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH, MAX_SOCKET_PAYLOAD_BYTES } from "./events.js";
-import { roomCreateSchema, roomJoinSchema, roomJoinDecisionSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema } from "./validation.js";
+import { roomCreateSchema, roomJoinSchema, roomJoinDecisionSchema, roomJoinSettingsSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema } from "./validation.js";
 import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, getPublicRooms, removeJoinRequestsBySocket, findParticipantBySession, reconnectParticipant, markReconnecting, addChatMessage, getChatMessages } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
 
@@ -113,7 +113,37 @@ function emitParticipants(roomId: string) {
   io.to(roomId).emit(EVENTS.PRESENCE_UPDATE, { roomId, participants });
 }
 
+function joinedPayload(room: NonNullable<ReturnType<typeof getRoom>>, participantId: string) {
+  return {
+    roomId: room.id,
+    participantId,
+    participants: getParticipants(room.id),
+    chatMessages: getChatMessages(room.id),
+    screenSharerId: room.screenSharerId,
+    joinRequestNotificationsEnabled: room.joinRequestNotificationsEnabled,
+  };
+}
+
 io.on("connection", (socket) => {
+  const queueJoinRequest = (room: NonNullable<ReturnType<typeof getRoom>>, name: string, sessionId: string) => {
+    const host = io.sockets.sockets.get(room.hostId);
+    if (!host?.connected) {
+      socket.emit(EVENTS.ROOM_ERROR, { roomId: room.id, message: "O host está desconectado no momento." });
+      return;
+    }
+    room.joinRequests.set(socket.id, { socketId: socket.id, sessionId, name, requestedAt: Date.now() });
+    socket.emit(EVENTS.ROOM_JOIN_PENDING, { roomId: room.id, message: "Pedido enviado. Aguarde a aprovação do host." });
+    if (!room.joinRequestNotificationsEnabled) return;
+    host.emit(EVENTS.ROOM_JOIN_REQUEST, { roomId: room.id, participantId: socket.id, participantName: name });
+  };
+
+  const emitPendingJoinRequests = (room: NonNullable<ReturnType<typeof getRoom>>) => {
+    if (!room.joinRequestNotificationsEnabled) return;
+    const host = io.sockets.sockets.get(room.hostId);
+    if (!host?.connected) return;
+    for (const request of room.joinRequests.values()) host.emit(EVENTS.ROOM_JOIN_REQUEST, { roomId: room.id, participantId: request.socketId, participantName: request.name });
+  };
+
   socket.on(EVENTS.ROOM_LIST_REQUEST, () => {
     if (isRateLimited(`room:list:${socket.id}`, 10, 60_000)) return;
     socket.emit(EVENTS.ROOM_LIST, { rooms: getPublicRooms() });
@@ -127,7 +157,7 @@ io.on("connection", (socket) => {
     const room = createRoom(socket.id, parsed.data.name, parsed.data.sessionId);
     socket.join(room.id);
     socket.emit(EVENTS.ROOM_CREATED, { roomId: room.id, hostId: room.hostId });
-    socket.emit(EVENTS.ROOM_JOINED, { roomId: room.id, participantId: socket.id, participants: getParticipants(room.id), chatMessages: getChatMessages(room.id), screenSharerId: room.screenSharerId });
+    socket.emit(EVENTS.ROOM_JOINED, joinedPayload(room, socket.id));
     emitParticipants(room.id);
   });
 
@@ -143,9 +173,7 @@ io.on("connection", (socket) => {
     if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "Sala cheia." }); return; }
     const host = io.sockets.sockets.get(room.hostId);
     if (!host?.connected) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "O host está desconectado no momento." }); return; }
-    room.joinRequests.set(socket.id, { socketId: socket.id, sessionId, name, requestedAt: Date.now() });
-    socket.emit(EVENTS.ROOM_JOIN_PENDING, { roomId, message: "Pedido enviado. Aguarde a aprovação do host." });
-    host.emit(EVENTS.ROOM_JOIN_REQUEST, { roomId, participantId: socket.id, participantName: name });
+    queueJoinRequest(room, name, sessionId);
   });
 
   socket.on(EVENTS.ROOM_JOIN_CANCEL, (payload: unknown) => {
@@ -184,8 +212,18 @@ io.on("connection", (socket) => {
       return;
     }
     target.join(roomId);
-    target.emit(EVENTS.ROOM_JOINED, { roomId, participantId, participants: getParticipants(roomId), chatMessages: getChatMessages(roomId), screenSharerId: room.screenSharerId });
+    target.emit(EVENTS.ROOM_JOINED, joinedPayload(room, participantId));
     emitParticipants(roomId);
+  });
+
+  socket.on(EVENTS.ROOM_JOIN_SETTINGS, (payload: unknown) => {
+    const parsed = roomJoinSettingsSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const authorized = getAuthorizedParticipant(socket.id, parsed.data.roomId);
+    if (!authorized || authorized.room.hostId !== socket.id) return;
+    authorized.room.joinRequestNotificationsEnabled = parsed.data.enabled;
+    socket.emit(EVENTS.ROOM_JOIN_SETTINGS_UPDATED, { roomId: authorized.room.id, enabled: parsed.data.enabled });
+    if (parsed.data.enabled) emitPendingJoinRequests(authorized.room);
   });
 
   socket.on(EVENTS.ROOM_JOIN, (payload: unknown) => {
@@ -206,21 +244,17 @@ io.on("connection", (socket) => {
       previousSocket?.leave(upper);
       previousSocket?.disconnect(true);
       socket.join(upper);
-      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper), screenSharerId: room.screenSharerId });
+      socket.emit(EVENTS.ROOM_JOINED, joinedPayload(room, socket.id));
       emitParticipants(upper);
       return;
     }
     if (room.participants.has(socket.id)) {
       socket.join(upper);
-      socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper), screenSharerId: room.screenSharerId });
+      socket.emit(EVENTS.ROOM_JOINED, joinedPayload(room, socket.id));
       return;
     }
     if (room.participants.size >= MAX_PARTICIPANTS) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: `Sala cheia (máx. ${MAX_PARTICIPANTS} participantes).` }); return; }
-    const p = addParticipant(upper, socket.id, name, parsed.data.sessionId);
-    if (!p) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Não foi possível entrar na sala." }); return; }
-    socket.join(upper);
-    socket.emit(EVENTS.ROOM_JOINED, { roomId: upper, participantId: socket.id, participants: getParticipants(upper), chatMessages: getChatMessages(upper), screenSharerId: room.screenSharerId });
-    emitParticipants(upper);
+    queueJoinRequest(room, name, parsed.data.sessionId);
   });
 
   socket.on(EVENTS.ROOM_LEAVE, (payload: unknown) => {
@@ -239,7 +273,7 @@ io.on("connection", (socket) => {
     socket.leave(roomId);
     if (remaining) {
       emitParticipants(remaining.id);
-      if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { roomId: remaining.id, hostId: remaining.hostId });
+       if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { roomId: remaining.id, hostId: remaining.hostId, joinRequestNotificationsEnabled: remaining.joinRequestNotificationsEnabled });
     }
   });
 
@@ -372,7 +406,7 @@ io.on("connection", (socket) => {
         const { room: remaining, wasHost } = removeParticipant(room.id, socket.id);
         if (remaining) {
           emitParticipants(remaining.id);
-          if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { roomId: remaining.id, hostId: remaining.hostId });
+           if (wasHost) io.to(remaining.id).emit(EVENTS.ROOM_HOST_CHANGED, { roomId: remaining.id, hostId: remaining.hostId, joinRequestNotificationsEnabled: remaining.joinRequestNotificationsEnabled });
         }
       }, 5_000);
     });

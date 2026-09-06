@@ -132,6 +132,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-join-request { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; padding: 10px; border: 1px solid rgba(109,224,161,.3); border-radius: 9px; background: rgba(109,224,161,.08); color: var(--muted); font-size: 10px; line-height: 1.35; }
 .vynk-join-request strong { color: var(--green); font-size: 11px; }
 .vynk-join-request > div { display: flex; gap: 6px; margin-top: 3px; }
+.vynk-join-settings { display: flex; align-items: flex-start; gap: 7px; margin-top: 14px; color: var(--muted); font-size: 10px; line-height: 1.35; cursor: pointer; }
+.vynk-join-settings input { width: 13px; height: 13px; flex: 0 0 auto; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .vynk-presence { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .vynk-presence.online .vynk-status-dot { background: var(--green); }
 .vynk-presence.reconnecting .vynk-status-dot { background: var(--amber); }

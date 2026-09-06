@@ -56,9 +56,18 @@ export default function Home() {
     const emit = () => socket.emit(EVENTS.ROOM_JOIN, { roomId, name: participantName, sessionId: getParticipantSessionId() });
     let timer: number | null = null;
     const onJoined = (data: { roomId: string }) => { cleanup(); localStorage.setItem("vynk_name", participantName); router.push(`/room/${data.roomId}`); };
-    const onError = (data: { message: string }) => { setError(data.message); setLoading(null); cleanup(); };
+    const onPending = (data: { roomId: string; message: string }) => { if (data.roomId !== roomId) return; setStatus(data.message); setLoading("pending"); };
+    const onResult = (data: { roomId: string; allowed: boolean; message: string }) => {
+      if (data.roomId !== roomId) return;
+      cleanup(); setLoading(null); setStatus(null);
+      if (!data.allowed) setError(data.message);
+    };
+    const onError = (data: { message: string; roomId?: string }) => { if (data.roomId && data.roomId !== roomId) return; setError(data.message); setLoading(null); cleanup(); };
     const cleanup = () => {
+      socket.emit(EVENTS.ROOM_JOIN_CANCEL, { roomId });
       socket.off(EVENTS.ROOM_JOINED, onJoined);
+      socket.off(EVENTS.ROOM_JOIN_PENDING, onPending);
+      socket.off(EVENTS.ROOM_JOIN_RESULT, onResult);
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off("connect", emit);
       if (timer) window.clearTimeout(timer);
@@ -66,9 +75,11 @@ export default function Home() {
     };
     pendingRequestCleanup.current = cleanup;
     socket.on(EVENTS.ROOM_JOINED, onJoined);
+    socket.on(EVENTS.ROOM_JOIN_PENDING, onPending);
+    socket.on(EVENTS.ROOM_JOIN_RESULT, onResult);
     socket.on(EVENTS.ROOM_ERROR, onError);
     if (socket.connected) emit(); else socket.once("connect", emit);
-    timer = window.setTimeout(() => { cleanup(); setLoading((v) => (v === "join" ? null : v)); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
+    timer = window.setTimeout(() => { cleanup(); setLoading(null); setStatus("O pedido ainda não foi respondido. Tente novamente mais tarde."); }, 60_000);
   };
 
   const handleJoin = () => {
@@ -187,7 +198,7 @@ export default function Home() {
             <label htmlFor="code">Já tem um código?</label>
             <div className="vynk-home-code-row">
               <input id="code" aria-label="Código da sala" autoComplete="off" autoCapitalize="characters" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="K7M4PX" maxLength={6} />
-              <button type="submit" disabled={loading !== null} className="vynk-home-secondary">{loading === "join" ? "Entrando…" : "Entrar"}<span aria-hidden="true">→</span></button>
+              <button type="submit" disabled={loading !== null} className="vynk-home-secondary">{loading === "join" ? "Enviando…" : loading === "pending" ? "Aguardando…" : "Pedir entrada"}<span aria-hidden="true">→</span></button>
             </div>
           </form>
           <div className="vynk-home-discover">

@@ -21,6 +21,7 @@ export type Room = {
   screenSharerId: string | null;
   presenceTimers: Map<string, NodeJS.Timeout>;
   joinRequests: Map<string, JoinRequest>;
+  joinRequestNotificationsEnabled: boolean;
 };
 
 export type JoinRequest = { socketId: string; sessionId: string; name: string; requestedAt: number };

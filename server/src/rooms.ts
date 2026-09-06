@@ -15,7 +15,7 @@ export function generateRoomCode(): string {
 export function getRoom(roomId: string): Room | undefined { return rooms.get(roomId.toUpperCase()); }
 export function createRoom(hostId: string, hostName: string, sessionId: string): Room {
   const id = generateRoomCode();
-  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map(), joinRequests: new Map() };
+  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map(), joinRequests: new Map(), joinRequestNotificationsEnabled: true };
   const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, presence: "online" };
   room.participants.set(hostId, host);
   rooms.set(id, room);

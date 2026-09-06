@@ -8,6 +8,8 @@ export const EVENTS = {
   ROOM_JOIN_PENDING: "room:join-pending",
   ROOM_JOIN_DECISION: "room:join-decision",
   ROOM_JOIN_RESULT: "room:join-result",
+  ROOM_JOIN_SETTINGS: "room:join-settings",
+  ROOM_JOIN_SETTINGS_UPDATED: "room:join-settings-updated",
   ROOM_LEAVE: "room:leave",
   ROOM_CREATED: "room:created",
   ROOM_JOINED: "room:joined",
@@ -40,6 +42,7 @@ export type ChatMessage = { id: string; roomId: string; authorId: string; author
 export type RoomCreatePayload = { name: string; sessionId: string };
 export type RoomJoinPayload = { roomId: string; name: string; sessionId: string };
 export type RoomJoinDecisionPayload = { roomId: string; participantId: string; allowed: boolean };
+export type RoomJoinSettingsPayload = { roomId: string; enabled: boolean };
 export type RoomLeavePayload = { roomId: string };
 export type PeerSignalPayload = { roomId: string; targetId: string };
 export type ScreenStatePayload = { roomId: string };

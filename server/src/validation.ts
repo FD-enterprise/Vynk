@@ -9,6 +9,7 @@ export const roomIdSchema = z.string().trim().toUpperCase().length(6, "Código d
 export const roomCreateSchema = z.object({ name: nameSchema, sessionId: sessionIdSchema });
 export const roomJoinSchema = z.object({ roomId: roomIdSchema, name: nameSchema, sessionId: sessionIdSchema });
 export const roomJoinDecisionSchema = z.object({ roomId: roomIdSchema, participantId: z.string().min(1).max(MAX_PEER_ID_LENGTH).regex(/^[A-Za-z0-9_-]+$/), allowed: z.boolean() });
+export const roomJoinSettingsSchema = z.object({ roomId: roomIdSchema, enabled: z.boolean() });
 export const roomLeaveSchema = z.object({ roomId: roomIdSchema });
 export const chatSendSchema = z.object({ roomId: roomIdSchema, text: z.string().trim().min(1).max(MAX_CHAT_MESSAGE_LENGTH) });
 export const screenStateSchema = z.object({ roomId: roomIdSchema });
