@@ -10,7 +10,7 @@ type NegotiationMode = "offer" | "answer";
 type SignalDescription = { type: "offer" | "answer"; sdp: string };
 type SignalCandidate = { candidate: string; sdpMid?: string | null; sdpMLineIndex?: number | null; usernameFragment?: string | null };
 export type PeerConnectionState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
-export type PeerQuality = "good" | "degraded" | "unknown";
+export type PeerQuality = "good" | "degraded" | "poor" | "unknown";
 
 type Props = {
   socket: Socket | null;
@@ -77,6 +77,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
   const [quality, setQuality] = useState<Record<string, PeerQuality>>({});
+  const [latency, setLatency] = useState<Record<string, number | null>>({});
   const [retryVersion, setRetryVersion] = useState(0);
   const [iceServers, setIceServers] = useState<RTCIceServer[] | null>(null);
 
@@ -139,6 +140,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     setStates((current) => { const next = { ...current }; delete next[peerId]; return next; });
     setIceStates((current) => { const next = { ...current }; delete next[peerId]; return next; });
     setQuality((current) => { const next = { ...current }; delete next[peerId]; return next; });
+    setLatency((current) => { const next = { ...current }; delete next[peerId]; return next; });
   }, [onRemotePeerRemoved, releasePeerResources]);
 
   const getTrackedPeerIds = useCallback(() => new Set([
@@ -162,6 +164,7 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     setStates({});
     setIceStates({});
     setQuality({});
+    setLatency({});
   }, [getTrackedPeerIds, onRemotePeerRemoved, releasePeerResources]);
 
   const trackDataChannel = useCallback((peerId: string, channel: RTCDataChannel) => {
@@ -513,9 +516,11 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
       if (!isRoomActive()) return;
       const entries = [...connections.current.entries()];
       const next: Record<string, PeerQuality> = {};
+      const nextLatency: Record<string, number | null> = {};
       await Promise.all(entries.map(async ([peerId, connection]) => {
         if (connection.connectionState !== "connected") {
-          next[peerId] = connection.connectionState === "new" || connection.connectionState === "connecting" ? "unknown" : "degraded";
+          next[peerId] = connection.connectionState === "new" || connection.connectionState === "connecting" ? "unknown" : "poor";
+          nextLatency[peerId] = null;
           return;
         }
         try {
@@ -536,20 +541,26 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
           });
           if (!hasMedia) {
             next[peerId] = "unknown";
+            nextLatency[peerId] = null;
             return;
           }
           const lossRatio = packetsReceived + packetsLost > 0 ? packetsLost / (packetsReceived + packetsLost) : 0;
-          next[peerId] = lossRatio > 0.05 || (roundTripTime !== null && roundTripTime > 0.4) ? "degraded" : "good";
+          nextLatency[peerId] = roundTripTime === null ? null : Math.round(roundTripTime * 1000);
+          next[peerId] = lossRatio > 0.08 || (roundTripTime !== null && roundTripTime > 0.5) ? "poor" : lossRatio > 0.03 || (roundTripTime !== null && roundTripTime > 0.18) ? "degraded" : roundTripTime === null ? "unknown" : "good";
         } catch {
           next[peerId] = "unknown";
+          nextLatency[peerId] = null;
         }
       }));
-      if (!cancelled && isRoomActive()) setQuality(next);
+      if (!cancelled && isRoomActive()) {
+        setQuality(next);
+        setLatency(nextLatency);
+      }
     };
     void sampleQuality();
     const timer = window.setInterval(() => { void sampleQuality(); }, 5000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [isRoomActive]);
 
-  return { states, iceStates, quality, closeAllConnections: resetConnections };
+  return { states, iceStates, quality, latency, closeAllConnections: resetConnections };
 }

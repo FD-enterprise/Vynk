@@ -47,6 +47,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-status-dot { width: 7px; height: 7px; border-radius: 999px; background: #77808e; display: inline-block; flex: 0 0 auto; }
 .vynk-status-dot.online { background: var(--green); box-shadow: 0 0 0 3px rgba(109,224,161,.12); }
 .vynk-status-dot.warning { background: var(--amber); box-shadow: 0 0 0 3px rgba(244,200,107,.1); }
+.vynk-status-dot.danger { background: #ff7f72; box-shadow: 0 0 0 3px rgba(255,127,114,.1); }
 .vynk-member-count { color: var(--soft); gap: 6px; font-family: var(--font-geist-mono), monospace; font-size: 12px; }
 .vynk-quiet-button, .vynk-leave-button { min-height: 36px; border-radius: 9px; gap: 8px; padding: 0 12px; font-size: 12px; font-weight: 620; transition: background .18s ease, color .18s ease, border-color .18s ease; }
 .vynk-quiet-button { border: 1px solid var(--line); color: var(--soft); background: transparent; }
@@ -170,6 +171,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-join-settings { display: flex; align-items: flex-start; gap: 7px; margin-top: 14px; color: var(--muted); font-size: 10px; line-height: 1.35; cursor: pointer; }
 .vynk-join-settings input { width: 13px; height: 13px; flex: 0 0 auto; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .vynk-presence { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.vynk-network-status { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: 8px; font-weight: 650; white-space: nowrap; }
+.vynk-network-dot { width: 6px; height: 6px; border-radius: 999px; background: #77808e; box-shadow: 0 0 0 2px rgba(119,128,142,.1); }
+.vynk-network-status.good { color: var(--green); }
+.vynk-network-status.good .vynk-network-dot { background: var(--green); box-shadow: 0 0 0 2px rgba(109,224,161,.12); }
+.vynk-network-status.degraded { color: var(--amber); }
+.vynk-network-status.degraded .vynk-network-dot { background: var(--amber); box-shadow: 0 0 0 2px rgba(244,200,107,.12); }
+.vynk-network-status.poor { color: #ff8d80; }
+.vynk-network-status.poor .vynk-network-dot { background: #ff7f72; box-shadow: 0 0 0 2px rgba(255,127,114,.12); }
 .vynk-presence.online .vynk-status-dot { background: var(--green); }
 .vynk-participant.speaking .vynk-presence { color: var(--green); }
 .vynk-participant.speaking .vynk-presence .vynk-status-dot { box-shadow: 0 0 0 3px rgba(109,224,161,.12), 0 0 10px rgba(109,224,161,.55); }
