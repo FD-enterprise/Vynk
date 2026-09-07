@@ -33,8 +33,8 @@ function formatPing(value: number | null | undefined): string {
 }
 
 function formatConnectionPing(value: number | null | undefined, unavailable: boolean): string {
-  if (typeof value === "number") return `${value} ms`;
-  return unavailable ? "offline" : formatPing(value);
+  if (unavailable) return "offline";
+  return formatPing(value);
 }
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
@@ -166,7 +166,7 @@ export default function RoomPage() {
       if (joinPhaseRef.current !== "joined") updateJoinPhase("rejected");
       if (data.message.includes("autorizou") || data.message.includes("Outra pessoa")) stopScreen();
     };
-    const onSocketDisconnect = () => { if (roomLifecycle.isActive(roomToken)) setParticipants((current) => current.map((participant) => ({ ...participant, presence: "reconnecting" }))); };
+    const onSocketDisconnect = () => { if (roomLifecycle.isActive(roomToken)) setParticipants((current) => current.map((participant) => participant.id === socket.id ? { ...participant, presence: "reconnecting" } : participant)); };
     const onScreenStopped = (data: { roomId: string }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
       setScreenSharerId(null);
@@ -562,9 +562,9 @@ export default function RoomPage() {
   };
   const qualityValues = remoteParticipants.map((participant) => participant.presence === "online" ? getPeerMetric(participant).quality : "poor");
   const mediaQuality = qualityValues.length === 0 ? null : qualityValues.includes("poor") ? "ruim" : qualityValues.includes("degraded") ? "instável" : qualityValues.every((value) => value === "good") ? "estável" : "conectando";
-  const overallQuality = qualityValues.includes("poor") ? "poor" : qualityValues.includes("degraded") ? "degraded" : qualityValues.length > 0 && qualityValues.every((value) => value === "good") ? "good" : "unknown";
-  const overallUnavailable = connState !== "connected" || remoteParticipants.some((participant) => participant.presence !== "online");
-  const measuredPings = remoteParticipants.map((participant) => getPeerMetric(participant).latency).filter((value): value is number => typeof value === "number");
+  const selfNetworkQuality = connState === "connected" ? "good" : connState === "reconnecting" || connState === "error" ? "poor" : "unknown";
+  const selfConnectionUnavailable = connState !== "connected";
+  const measuredPings = remoteParticipants.filter((participant) => participant.presence === "online").map((participant) => getPeerMetric(participant).latency).filter((value): value is number => typeof value === "number");
   const overallPing = measuredPings.length > 0 ? Math.round(measuredPings.reduce((sum, value) => sum + value, 0) / measuredPings.length) : null;
   const voiceStreams = useMemo(() => {
     const next = new Map(remoteMicrophoneStreams);
@@ -682,7 +682,7 @@ export default function RoomPage() {
             </ul>
             {me && <div className={`vynk-self-bar ${speakingParticipantIds.has(me.id) && !me.micMuted ? "speaking" : ""}`}>
               <span className={`vynk-avatar mine ${speakingParticipantIds.has(me.id) && !me.micMuted ? "speaking" : ""}`} aria-label={speakingParticipantIds.has(me.id) && !me.micMuted ? `${me.name} está falando` : me.name}>{me.name.trim().slice(0, 1).toUpperCase()}</span>
-              <span className="vynk-self-details"><span className="vynk-self-name">{me.name}<em>você</em></span>{me.isHost && <small>HOST</small>}<span className={`vynk-network-status ${overallQuality}`} title={`Ping médio: ${formatConnectionPing(overallPing, overallUnavailable)} · Conexão ${overallUnavailable ? "Offline" : networkLabel(overallQuality)}`}><span className="vynk-network-dot" />{formatConnectionPing(overallPing, overallUnavailable)}</span></span>
+              <span className="vynk-self-details"><span className="vynk-self-name">{me.name}<em>você</em></span>{me.isHost && <small>HOST</small>}<span className={`vynk-network-status ${selfNetworkQuality}`} title={`Ping médio: ${formatConnectionPing(overallPing, selfConnectionUnavailable)} · Conexão ${selfConnectionUnavailable ? "Offline" : "Conectado"}`}><span className="vynk-network-dot" />{formatConnectionPing(overallPing, selfConnectionUnavailable)}</span></span>
               <span className="vynk-self-actions">
                 <button type="button" onClick={handleParticipantMicrophone} disabled={microphone.state === "requesting-permission"} aria-pressed={microphone.state === "active" && !microphone.muted} aria-label={microphone.state === "active" && !microphone.muted ? "Mutar microfone" : "Ativar microfone"} title={microphone.state === "active" && !microphone.muted ? "Mutar microfone" : "Ativar microfone"} className={`vynk-self-action ${microphone.state !== "active" || microphone.muted ? "muted" : ""}`}><span className={`vynk-mic-indicator vynk-self-action-icon ${microphone.state !== "active" || microphone.muted ? "muted" : ""}`} aria-hidden="true"><Icon name="mic" size={19} /></span></button>
                 <button type="button" onClick={handleToggleDeafen} aria-pressed={isDeafened} aria-label={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} title={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} className={`vynk-self-action ${isDeafened ? "muted" : ""}`}><span className={`vynk-audio-output-indicator vynk-self-action-icon ${isDeafened ? "muted" : ""}`} aria-hidden="true"><Icon name="headphones" size={19} /></span></button>
