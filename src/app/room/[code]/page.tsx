@@ -12,7 +12,7 @@ import { useMicrophone } from "@/hooks/useMicrophone";
 import { useVoiceActivity } from "@/hooks/useVoiceActivity";
 import { getRemoteAudioPlaybackState, RemoteAudio, resumeRemoteAudioContext, type RemoteAudioPlaybackState } from "@/components/RemoteAudio";
 
-type IconName = "arrow" | "check" | "copy" | "expand" | "lock" | "mic" | "monitor" | "send" | "shrink" | "users" | "volume" | "x";
+type IconName = "arrow" | "check" | "copy" | "expand" | "headphones" | "lock" | "mic" | "monitor" | "send" | "shrink" | "users" | "volume" | "x";
 type JoinRequest = { roomId: string; participantId: string; participantName: string };
 type JoinPhase = "connecting" | "pending" | "joined" | "rejected";
 
@@ -22,6 +22,7 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     check: ["m5 12 4 4L19 6"],
     copy: ["M8 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2", "M6 8h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"],
     expand: ["M8 3H3v5", "m3 3 6 6", "M16 3h5v5", "m21 3-6 6", "M8 21H3v-5", "m3 21 6-6", "M16 21h5v-5", "m21 21-6-6"],
+    headphones: ["M3 18v-6a9 9 0 0 1 18 0v6", "M3 18a2 2 0 0 0 2 2h2v-8H5a2 2 0 0 0-2 2v4Z", "M21 18a2 2 0 0 1-2 2h-2v-8h2a2 2 0 0 1 2 2v4Z"],
     lock: ["M7 10V7a5 5 0 0 1 10 0v3", "M5 10h14v10H5z", "M12 14v2"],
     mic: ["M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z", "M19 11v1a7 7 0 0 1-14 0v-1", "M12 19v3", "M8 22h8"],
     monitor: ["M4 5h16v11H4z", "M8 21h8", "M12 16v5"],
@@ -60,6 +61,7 @@ export default function RoomPage() {
   const [audioPlaybackStates, setAudioPlaybackStates] = useState<Map<string, RemoteAudioPlaybackState>>(new Map());
   const [screenVolume, setScreenVolume] = useState(100);
   const [participantVolumes, setParticipantVolumes] = useState<Map<string, number>>(new Map());
+  const [isDeafened, setIsDeafened] = useState(false);
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
   const isHostRef = useRef(false);
@@ -349,6 +351,7 @@ export default function RoomPage() {
     setRemoteMicrophoneStreams(new Map());
     setAudioPlaybackStates(new Map());
     setParticipantVolumes(new Map());
+    setIsDeafened(false);
     setChatMessages([]);
     setChatDraft("");
     setChatError(null);
@@ -431,12 +434,31 @@ export default function RoomPage() {
     }
   };
   const handleMicrophone = async () => {
+    if (isDeafened) setIsDeafened(false);
     if (microphone.state === "active" || microphone.state === "requesting-permission") return;
     await microphone.start();
   };
   const handleToggleMicrophone = () => {
     if (microphone.state !== "active") return;
+    if (isDeafened) {
+      setIsDeafened(false);
+      microphone.unmute();
+      return;
+    }
     microphone.toggle();
+  };
+  const handleToggleDeafen = () => {
+    const nextDeafened = !isDeafened;
+    setIsDeafened(nextDeafened);
+    if (nextDeafened && microphone.state === "active") microphone.mute();
+  };
+  const handleParticipantMicrophone = () => {
+    if (microphone.state === "requesting-permission") return;
+    if (microphone.state === "active") {
+      handleToggleMicrophone();
+      return;
+    }
+    void handleMicrophone();
   };
   const handleChatSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -546,8 +568,8 @@ export default function RoomPage() {
         </div>
       </header>
       {(error || socketError) && <div className="vynk-alert" role="alert"><span className="vynk-alert-mark">!</span><span>{error || socketError}</span><button onClick={() => setError(null)} aria-label="Fechar aviso"><Icon name="x" size={15} /></button></div>}
-      {[...remoteMicrophoneStreams.entries()].map(([peerId, stream]) => <RemoteAudio key={peerId} peerId={peerId} stream={stream} volume={(participantVolumes.get(peerId) ?? 100) / 100} onPlaybackStateChange={handleAudioPlaybackState} />)}
-      {[...remoteStreams.entries()].filter(([, stream]) => stream.getAudioTracks().some((track) => track.readyState === "live")).map(([peerId, stream]) => <RemoteAudio key={`${peerId}:screen`} peerId={`${peerId}:screen`} stream={stream} volume={screenVolume / 100} onPlaybackStateChange={handleAudioPlaybackState} />)}
+      {[...remoteMicrophoneStreams.entries()].map(([peerId, stream]) => <RemoteAudio key={peerId} peerId={peerId} stream={stream} volume={isDeafened ? 0 : (participantVolumes.get(peerId) ?? 100) / 100} onPlaybackStateChange={handleAudioPlaybackState} />)}
+      {[...remoteStreams.entries()].filter(([, stream]) => stream.getAudioTracks().some((track) => track.readyState === "live")).map(([peerId, stream]) => <RemoteAudio key={`${peerId}:screen`} peerId={`${peerId}:screen`} stream={stream} volume={isDeafened ? 0 : screenVolume / 100} onPlaybackStateChange={handleAudioPlaybackState} />)}
       <main className="vynk-workspace">
         <section className="vynk-stage-column" aria-label="Palco da sala">
           <div className="vynk-stage-heading"><div><span className="vynk-eyebrow">TRANSMISSÃO AO VIVO</span><h1>{displayStream ? "Tela compartilhada" : "Palco da sala"}</h1></div><span className={`vynk-stage-state ${displayStream ? "active" : ""}`}><span className="vynk-status-dot" />{displayStream ? "Ao vivo" : "Aguardando tela"}</span></div>
@@ -562,7 +584,6 @@ export default function RoomPage() {
           <div className="vynk-control-panel">
              <div className="vynk-control-group">
               {canShareScreen ? <button onClick={handleShare} disabled={screen.state === "requesting-permission" || (!!screenSharerId && !isScreenSharer)} className={`vynk-control-button ${screen.state === "sharing" ? "danger" : "accent"}`} aria-label={screen.state === "sharing" ? "Parar compartilhamento de tela" : "Compartilhar tela"}><Icon name="monitor" size={17} /><span>{screen.state === "requesting-permission" ? "Solicitando…" : screen.state === "sharing" ? "Parar tela" : "Compartilhar tela"}</span></button> : <button onClick={handleRequestScreen} disabled={screenRequestSent || !socket?.connected} className="vynk-control-button muted"><Icon name="monitor" size={17} /><span>{screenRequestSent ? "Pedido enviado" : "Pedir para transmitir"}</span></button>}
-              {microphone.state === "active" ? <button onClick={handleToggleMicrophone} aria-pressed={microphone.muted} className={`vynk-control-button ${microphone.muted ? "muted" : "active"}`}><span className={`vynk-mic-indicator ${microphone.muted ? "muted" : ""}`} aria-hidden="true"><Icon name="mic" size={17} /></span><span>{microphone.muted ? "Desmutar" : "Mutar"}</span></button> : <button onClick={handleMicrophone} disabled={microphone.state === "requesting-permission"} className="vynk-control-button muted"><span className="vynk-mic-indicator muted" aria-hidden="true"><Icon name="mic" size={17} /></span><span>{microphone.state === "requesting-permission" ? "Solicitando…" : microphone.state === "error" ? "Tentar microfone" : "Ativar microfone"}</span></button>}
                {hasBlockedAudio && <><span className="sr-only" aria-live="polite">O navegador bloqueou o áudio da chamada. Use o botão para liberar.</span><button onClick={handleEnableCallAudio} className="vynk-control-button audio"><Icon name="volume" size={17} /><span>Liberar áudio</span></button></>}
              </div>
              <div className="vynk-volume-controls" aria-label="Volume da transmissão">
@@ -581,13 +602,21 @@ export default function RoomPage() {
               {isHost && joinRequests[0] && <div className="vynk-join-request" role="status"><strong>{joinRequests[0].participantName} quer entrar</strong><span>Essa pessoa está aguardando sua permissão para entrar na sala.</span><div><button onClick={() => handleJoinDecision(joinRequests[0].participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleJoinDecision(joinRequests[0].participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
              {isHost && screenRequest && <div className="vynk-screen-request" role="status"><strong>{screenRequest.participantName} quer transmitir</strong><span>Autorize essa pessoa a compartilhar a tela.</span><div><button onClick={() => handleScreenPermission(screenRequest.participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleScreenPermission(screenRequest.participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
             <ul className="vynk-participant-list">
-              {participants.map((p) => (
+              {participants.filter((p) => p.id !== myId).map((p) => (
                 <li key={p.id} className={`vynk-participant ${speakingParticipantIds.has(p.id) && !p.micMuted ? "speaking" : ""}`}>
-                   <span className={`vynk-avatar ${p.id === myId ? "mine" : ""} ${speakingParticipantIds.has(p.id) && !p.micMuted ? "speaking" : ""}`} aria-label={speakingParticipantIds.has(p.id) && !p.micMuted ? `${p.name} está falando` : p.name}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-name"><span>{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}{isHost && !p.isHost && p.presence === "online" && <button onClick={() => handleScreenPermission(p.id, !p.canShareScreen)} className="vynk-permission-button">{p.canShareScreen ? "Revogar tela" : "Permitir tela"}</button>}{p.id !== myId && <label className="vynk-participant-volume"><span>Voz <output>{participantVolumes.get(p.id) ?? 100}%</output></span><input type="range" min="0" max="200" step="1" value={participantVolumes.get(p.id) ?? 100} disabled={p.presence !== "online"} onChange={(event) => handleParticipantVolumeChange(p.id, Number(event.currentTarget.value))} aria-label={`Volume da voz de ${p.name}`} /></label>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`} title={p.micMuted ? "Microfone mutado" : "Microfone ativo"}><span className="vynk-status-dot" /><span className={`vynk-mic-indicator vynk-participant-mic ${p.micMuted ? "muted" : ""}`} role="img" aria-label={p.micMuted ? "Microfone mutado" : "Microfone ativo"}><Icon name="mic" size={14} /></span></span>
+                   <span className={`vynk-avatar ${p.id === myId ? "mine" : ""} ${speakingParticipantIds.has(p.id) && !p.micMuted ? "speaking" : ""}`} aria-label={speakingParticipantIds.has(p.id) && !p.micMuted ? `${p.name} está falando` : p.name}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-main"><span className="vynk-participant-name-line"><span className="vynk-participant-name-text">{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}</span>{isHost && !p.isHost && p.presence === "online" && <button onClick={() => handleScreenPermission(p.id, !p.canShareScreen)} className="vynk-permission-button">{p.canShareScreen ? "Revogar tela" : "Permitir tela"}</button>}{p.id !== myId && <label className="vynk-participant-volume"><span>Voz <output>{participantVolumes.get(p.id) ?? 100}%</output></span><input type="range" min="0" max="200" step="1" value={participantVolumes.get(p.id) ?? 100} disabled={p.presence !== "online"} onChange={(event) => handleParticipantVolumeChange(p.id, Number(event.currentTarget.value))} aria-label={`Volume da voz de ${p.name}`} /></label>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`} title={p.micMuted ? "Microfone mutado" : "Microfone ativo"}><span className="vynk-status-dot" /><span className={`vynk-mic-indicator vynk-participant-mic ${p.micMuted ? "muted" : ""}`} role="img" aria-label={p.micMuted ? "Microfone mutado" : "Microfone ativo"}><Icon name="mic" size={14} /></span>{p.id === myId && <button type="button" onClick={handleToggleDeafen} aria-pressed={isDeafened} className={`vynk-participant-audio-button ${isDeafened ? "muted" : ""}`} aria-label={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} title={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"}><span className={`vynk-audio-output-indicator ${isDeafened ? "muted" : ""}`} aria-hidden="true"><Icon name="headphones" size={14} /></span></button>}</span>
                 </li>
               ))}
-              {participants.length === 0 && <li className="vynk-empty-row"><span className="vynk-skeleton" />Carregando participantes…</li>}
+              {participants.filter((p) => p.id !== myId).length === 0 && !me && <li className="vynk-empty-row"><span className="vynk-skeleton" />Carregando participantes…</li>}
             </ul>
+            {me && <div className={`vynk-self-bar ${speakingParticipantIds.has(me.id) && !me.micMuted ? "speaking" : ""}`}>
+              <span className={`vynk-avatar mine ${speakingParticipantIds.has(me.id) && !me.micMuted ? "speaking" : ""}`} aria-label={speakingParticipantIds.has(me.id) && !me.micMuted ? `${me.name} está falando` : me.name}>{me.name.trim().slice(0, 1).toUpperCase()}</span>
+              <span className="vynk-self-details"><span className="vynk-self-name">{me.name}<em>você</em></span>{me.isHost && <small>HOST</small>}</span>
+              <span className="vynk-self-actions">
+                <button type="button" onClick={handleParticipantMicrophone} disabled={microphone.state === "requesting-permission"} aria-pressed={microphone.state === "active" && !microphone.muted} aria-label={microphone.state === "active" && !microphone.muted ? "Mutar microfone" : "Ativar microfone"} title={microphone.state === "active" && !microphone.muted ? "Mutar microfone" : "Ativar microfone"} className={`vynk-self-action ${microphone.state !== "active" || microphone.muted ? "muted" : ""}`}><span className={`vynk-mic-indicator vynk-self-action-icon ${microphone.state !== "active" || microphone.muted ? "muted" : ""}`} aria-hidden="true"><Icon name="mic" size={19} /></span></button>
+                <button type="button" onClick={handleToggleDeafen} aria-pressed={isDeafened} aria-label={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} title={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} className={`vynk-self-action ${isDeafened ? "muted" : ""}`}><span className={`vynk-audio-output-indicator vynk-self-action-icon ${isDeafened ? "muted" : ""}`} aria-hidden="true"><Icon name="headphones" size={19} /></span></button>
+              </span>
+            </div>}
           </section>
           <section className="flex min-h-[280px] flex-1 flex-col border-t dark:border-zinc-800" aria-label="Chat da sala">
             <div className="vynk-chat-panel">
