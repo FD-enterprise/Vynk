@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { useParams, useRouter } from "next/navigation";
 import { EVENTS, MAX_CHAT_MESSAGE_LENGTH, MAX_PARTICIPANTS, type ChatMessage, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
-import { getParticipantSessionId, SIGNALING_URL } from "@/lib/socket";
+import { getParticipantSessionId } from "@/lib/socket";
 import { isOwnChatMessage } from "@/lib/chatIdentity";
 import { createRoomLifecycleToken, RoomLifecycleGuard } from "@/lib/mediaLifecycle";
 import { useWebRTCSignaling, type PeerQuality } from "@/hooks/useWebRTCSignaling";
@@ -275,7 +275,7 @@ export default function RoomPage() {
       const startedAt = performance.now();
       const timeout = window.setTimeout(() => currentRequest.abort(), 5_000);
       try {
-        const response = await fetch(`${SIGNALING_URL.replace(/\/$/, "")}/health?ping=${Date.now()}`, { cache: "no-store", signal: currentRequest.signal });
+        const response = await fetch(`/api/health?ping=${Date.now()}`, { cache: "no-store", signal: currentRequest.signal });
         if (!response.ok) throw new Error(`Health check returned ${response.status}`);
         const pingMs = Math.min(60_000, Math.max(0, Math.round(performance.now() - startedAt)));
         if (!cancelled) setLocalNetworkPing(pingMs);
