@@ -4,8 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CaptureRequestGuard, stopMediaStream } from "@/lib/mediaLifecycle";
 
 export type MicrophoneState = "off" | "requesting-permission" | "active" | "error";
+const MICROPHONE_PERMISSION_KEY = "vynk_microphone_permission_granted";
 
-export function useMicrophone(onStateChange?: (muted: boolean) => void) {
+function hasRememberedPermission(): boolean {
+  return typeof window !== "undefined" && window.localStorage.getItem(MICROPHONE_PERMISSION_KEY) === "true";
+}
+
+function rememberPermission(granted: boolean): void {
+  if (typeof window === "undefined") return;
+  if (granted) window.localStorage.setItem(MICROPHONE_PERMISSION_KEY, "true");
+  else window.localStorage.removeItem(MICROPHONE_PERMISSION_KEY);
+}
+
+export function useMicrophone(onStateChange?: (muted: boolean) => void, options?: { autoStart?: boolean }) {
   const [state, setState] = useState<MicrophoneState>("off");
   const [muted, setMuted] = useState(true);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -14,6 +25,7 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
   const captureRequest = useRef(new CaptureRequestGuard());
   const mounted = useRef(false);
   const onStateChangeRef = useRef(onStateChange);
+  const autoStart = options?.autoStart ?? false;
 
   useEffect(() => {
     onStateChangeRef.current = onStateChange;
@@ -74,6 +86,7 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
       }
 
       activeStream.current = current;
+      rememberPermission(true);
       audioTrack.enabled = true;
       audioTrack.onended = () => stopStream(current);
       setStream(current);
@@ -85,6 +98,7 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
       if (!mounted.current || !captureRequest.current.isCurrent(request)) return null;
       const errorName = cause instanceof DOMException ? cause.name : "";
       if (errorName === "NotAllowedError" || errorName === "SecurityError") {
+        rememberPermission(false);
         setError("Permissão para usar o microfone foi negada. Libere o acesso no navegador e tente novamente.");
       } else if (errorName === "NotFoundError" || errorName === "DevicesNotFoundError") {
         setError("Nenhum microfone foi encontrado. Conecte um dispositivo e tente novamente.");
@@ -110,6 +124,13 @@ export function useMicrophone(onStateChange?: (muted: boolean) => void) {
       activeStream.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!autoStart || !hasRememberedPermission() || state !== "off") return;
+    // A previously granted permission is an external browser capability that we restore on room entry.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void start();
+  }, [autoStart, start, state]);
 
   return { state, muted, stream, error, start, stop, mute, unmute, toggle };
 }
