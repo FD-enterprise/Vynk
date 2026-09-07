@@ -9,7 +9,6 @@ export type Participant = {
   joinedAt: number;
   micMuted: boolean;
   deafened: boolean;
-  pingMs: number | null;
   presence: PresenceState;
 };
 

@@ -1,9 +1,9 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { EVENTS, MAX_CHAT_MESSAGE_LENGTH, MAX_PARTICIPANTS, type ChatMessage, type NetworkStatusPayload, type Participant } from "@/lib/events";
+import { EVENTS, MAX_CHAT_MESSAGE_LENGTH, MAX_PARTICIPANTS, type ChatMessage, type Participant } from "@/lib/events";
 import { useSocket } from "@/hooks/useSocket";
-import { getParticipantSessionId } from "@/lib/socket";
+import { getParticipantSessionId, SIGNALING_URL } from "@/lib/socket";
 import { isOwnChatMessage } from "@/lib/chatIdentity";
 import { createRoomLifecycleToken, RoomLifecycleGuard } from "@/lib/mediaLifecycle";
 import { useWebRTCSignaling, type PeerQuality } from "@/hooks/useWebRTCSignaling";
@@ -88,6 +88,8 @@ export default function RoomPage() {
   const [audioPlaybackStates, setAudioPlaybackStates] = useState<Map<string, RemoteAudioPlaybackState>>(new Map());
   const [screenVolume, setScreenVolume] = useState(100);
   const [participantVolumes, setParticipantVolumes] = useState<Map<string, number>>(new Map());
+  const [localNetworkPing, setLocalNetworkPing] = useState<number | null>(null);
+  const [remoteNetworkPings, setRemoteNetworkPings] = useState<Record<string, number>>({});
   const [isDeafened, setIsDeafened] = useState(false);
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
@@ -171,7 +173,7 @@ export default function RoomPage() {
       if (joinPhaseRef.current !== "joined") updateJoinPhase("rejected");
       if (data.message.includes("autorizou") || data.message.includes("Outra pessoa")) stopScreen();
     };
-    const onSocketDisconnect = () => { if (roomLifecycle.isActive(roomToken)) setParticipants((current) => current.map((participant) => participant.id === socket.id ? { ...participant, pingMs: null, presence: "reconnecting" } : participant)); };
+    const onSocketDisconnect = () => { if (roomLifecycle.isActive(roomToken)) setParticipants((current) => current.map((participant) => participant.id === socket.id ? { ...participant, presence: "reconnecting" } : participant)); };
     const onScreenStopped = (data: { roomId: string }) => {
       if (!roomLifecycle.isActive(roomToken) || data.roomId !== roomId) return;
       setScreenSharerId(null);
@@ -215,10 +217,6 @@ export default function RoomPage() {
       if (data.roomId !== roomId || !roomLifecycle.isActive(roomToken)) return;
       setChatMessages((current) => [...current, data].slice(-200));
     };
-    const onNetworkStatus = (data: NetworkStatusPayload) => {
-      if (data.roomId !== roomId || !roomLifecycle.isActive(roomToken)) return;
-      setParticipants((current) => current.map((participant) => participant.id === data.participantId ? { ...participant, pingMs: data.pingMs } : participant));
-    };
     socket.on(EVENTS.ROOM_JOINED, onJoined);
     socket.on(EVENTS.ROOM_PARTICIPANTS, onParticipants);
     socket.on(EVENTS.PRESENCE_UPDATE, onParticipants);
@@ -234,7 +232,6 @@ export default function RoomPage() {
     socket.on(EVENTS.SCREEN_STOPPED, onScreenStopped);
     socket.on(EVENTS.MICROPHONE_STATE, onMicrophoneState);
     socket.on(EVENTS.CHAT_MESSAGE, onChatMessage);
-    socket.on(EVENTS.NETWORK_STATUS, onNetworkStatus);
     socket.on("disconnect", onSocketDisconnect);
     const emitJoin = () => { if (roomLifecycle.isActive(roomToken)) socket.emit(EVENTS.ROOM_JOIN, { roomId, name: effectiveName, sessionId: getParticipantSessionId() }); };
     if (socket.connected) emitJoin(); else socket.once("connect", emitJoin);
@@ -255,7 +252,6 @@ export default function RoomPage() {
       socket.off(EVENTS.SCREEN_STOPPED, onScreenStopped);
       socket.off(EVENTS.MICROPHONE_STATE, onMicrophoneState);
       socket.off(EVENTS.CHAT_MESSAGE, onChatMessage);
-      socket.off(EVENTS.NETWORK_STATUS, onNetworkStatus);
       socket.off("disconnect", onSocketDisconnect);
       socket.off("connect", emitJoin);
     };
@@ -269,37 +265,35 @@ export default function RoomPage() {
   }, [socket, roomId, roomLifecycle, roomToken, promptName, name]);
 
   useEffect(() => {
-    if (!socket || !roomId || joinPhase !== "joined" || connState !== "connected") return;
+    if (!roomId || joinPhase !== "joined" || connState !== "connected") return;
     let cancelled = false;
-    let pending = false;
-    let probeTimeout: number | null = null;
-    const samplePing = () => {
-      if (cancelled || pending || !socket.connected) return;
-      pending = true;
-      let timedOut = false;
+    let request: AbortController | null = null;
+    const samplePing = async () => {
+      if (cancelled || request) return;
+      request = new AbortController();
+      const currentRequest = request;
       const startedAt = performance.now();
-      probeTimeout = window.setTimeout(() => {
-        timedOut = true;
-        pending = false;
-        probeTimeout = null;
-      }, 3_500);
-      socket.volatile.emit(EVENTS.NETWORK_PING, { roomId }, () => {
-        if (probeTimeout !== null) window.clearTimeout(probeTimeout);
-        probeTimeout = null;
-        pending = false;
-        if (cancelled || timedOut || !socket.connected) return;
+      const timeout = window.setTimeout(() => currentRequest.abort(), 5_000);
+      try {
+        const response = await fetch(`${SIGNALING_URL.replace(/\/$/, "")}/health?ping=${Date.now()}`, { cache: "no-store", signal: currentRequest.signal });
+        if (!response.ok) throw new Error(`Health check returned ${response.status}`);
         const pingMs = Math.min(60_000, Math.max(0, Math.round(performance.now() - startedAt)));
-        socket.volatile.emit(EVENTS.NETWORK_REPORT, { roomId, pingMs });
-      });
+        if (!cancelled) setLocalNetworkPing(pingMs);
+      } catch {
+        if (!cancelled) setLocalNetworkPing(null);
+      } finally {
+        window.clearTimeout(timeout);
+        if (request === currentRequest) request = null;
+      }
     };
-    samplePing();
-    const interval = window.setInterval(samplePing, 5_000);
+    void samplePing();
+    const interval = window.setInterval(() => { void samplePing(); }, 5_000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
-      if (probeTimeout !== null) window.clearTimeout(probeTimeout);
+      request?.abort();
     };
-  }, [connState, joinPhase, roomId, socket]);
+  }, [connState, joinPhase, roomId]);
 
   const handleRemoteStream = useCallback((peerId: string, stream: MediaStream) => {
     if (!roomLifecycle.isActive(roomToken)) return;
@@ -326,6 +320,10 @@ export default function RoomPage() {
       return next;
     });
   }, [roomLifecycle, roomToken]);
+  const handleRemoteNetworkPing = useCallback((peerId: string, pingMs: number) => {
+    if (!roomLifecycle.isActive(roomToken)) return;
+    setRemoteNetworkPings((current) => current[peerId] === pingMs ? current : { ...current, [peerId]: pingMs });
+  }, [roomLifecycle, roomToken]);
   const handleRemotePeerRemoved = useCallback((peerId: string) => {
     if (!roomLifecycle.isActive(roomToken)) return;
     setRemoteStreams((current) => {
@@ -350,6 +348,12 @@ export default function RoomPage() {
       next.delete(peerId);
       return next;
     });
+    setRemoteNetworkPings((current) => {
+      if (current[peerId] === undefined) return current;
+      const next = { ...current };
+      delete next[peerId];
+      return next;
+    });
   }, [roomLifecycle, roomToken]);
 
   const handleParticipantVolumeChange = useCallback((peerId: string, volume: number) => {
@@ -370,8 +374,10 @@ export default function RoomPage() {
     peers: participants.filter((participant) => participant.presence === "online").map((participant) => ({ id: participant.id, isHost: participant.isHost })),
     localScreenStream: screen.stream,
     localMicrophoneStream: microphone.stream,
+    localNetworkPing,
     onRemoteStream: handleRemoteStream,
     onRemoteMicrophoneStream: handleRemoteMicrophoneStream,
+    onRemoteNetworkPing: handleRemoteNetworkPing,
     onRemotePeerRemoved: handleRemotePeerRemoved,
     isRoomActive,
   });
@@ -574,7 +580,8 @@ export default function RoomPage() {
   const mediaQuality = mediaQualityValues.length === 0 ? null : mediaQualityValues.includes("poor") ? "ruim" : mediaQualityValues.includes("degraded") ? "instável" : mediaQualityValues.every((value) => value === "good") ? "estável" : "conectando";
   const getPeerNetwork = (participant: Participant) => {
     const unavailable = participant.presence !== "online";
-    return { quality: unavailable ? "poor" as const : networkQualityFromPing(participant.pingMs), ping: participant.pingMs, unavailable };
+    const ping = remoteNetworkPings[participant.id];
+    return { quality: unavailable ? "poor" as const : networkQualityFromPing(ping), ping, unavailable };
   };
   const voiceStreams = useMemo(() => {
     const next = new Map(remoteMicrophoneStreams);
@@ -586,7 +593,7 @@ export default function RoomPage() {
   const participantCount = participants.filter((p) => p.presence !== "offline").length;
   const me = participants.find((participant) => participant.id === myId);
   const selfConnectionUnavailable = connState !== "connected" || me?.presence !== "online";
-  const selfNetworkQuality = selfConnectionUnavailable ? "poor" : networkQualityFromPing(me?.pingMs);
+  const selfNetworkQuality = selfConnectionUnavailable ? "poor" : networkQualityFromPing(localNetworkPing);
   const canShareScreen = isHost || !!me?.canShareScreen;
   const isScreenSharer = screenSharerId === myId;
   const connectionLabel = connState === "connected" ? "Conectado" : connState === "reconnecting" ? "Reconectando" : connState === "error" ? "Sem conexão" : "Conectando";
@@ -694,7 +701,7 @@ export default function RoomPage() {
             </ul>
             {me && <div className={`vynk-self-bar ${speakingParticipantIds.has(me.id) && !me.micMuted ? "speaking" : ""}`}>
               <span className={`vynk-avatar mine ${speakingParticipantIds.has(me.id) && !me.micMuted ? "speaking" : ""}`} aria-label={speakingParticipantIds.has(me.id) && !me.micMuted ? `${me.name} está falando` : me.name}>{me.name.trim().slice(0, 1).toUpperCase()}</span>
-              <span className="vynk-self-details"><span className="vynk-self-name">{me.name}<em>você</em></span>{me.isHost && <small>HOST</small>}<span className={`vynk-network-status ${selfNetworkQuality}`} title={`Seu ping: ${formatConnectionPing(me.pingMs, selfConnectionUnavailable)} · Conexão ${selfConnectionUnavailable ? "Offline" : networkLabel(selfNetworkQuality)}`}><span className="vynk-network-dot" />{formatConnectionPing(me.pingMs, selfConnectionUnavailable)}</span></span>
+              <span className="vynk-self-details"><span className="vynk-self-name">{me.name}<em>você</em></span>{me.isHost && <small>HOST</small>}<span className={`vynk-network-status ${selfNetworkQuality}`} title={`Seu ping: ${formatConnectionPing(localNetworkPing, selfConnectionUnavailable)} · Conexão ${selfConnectionUnavailable ? "Offline" : networkLabel(selfNetworkQuality)}`}><span className="vynk-network-dot" />{formatConnectionPing(localNetworkPing, selfConnectionUnavailable)}</span></span>
               <span className="vynk-self-actions">
                 <button type="button" onClick={handleParticipantMicrophone} disabled={microphone.state === "requesting-permission"} aria-pressed={microphone.state === "active" && !microphone.muted} aria-label={microphone.state === "active" && !microphone.muted ? "Mutar microfone" : "Ativar microfone"} title={microphone.state === "active" && !microphone.muted ? "Mutar microfone" : "Ativar microfone"} className={`vynk-self-action ${microphone.state !== "active" || microphone.muted ? "muted" : ""}`}><span className={`vynk-mic-indicator vynk-self-action-icon ${microphone.state !== "active" || microphone.muted ? "muted" : ""}`} aria-hidden="true"><Icon name="mic" size={19} /></span></button>
                 <button type="button" onClick={handleToggleDeafen} aria-pressed={isDeafened} aria-label={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} title={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} className={`vynk-self-action ${isDeafened ? "muted" : ""}`}><span className={`vynk-audio-output-indicator vynk-self-action-icon ${isDeafened ? "muted" : ""}`} aria-hidden="true"><Icon name="headphones" size={19} /></span></button>

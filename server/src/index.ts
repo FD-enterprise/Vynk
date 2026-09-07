@@ -3,7 +3,7 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH, MAX_SOCKET_PAYLOAD_BYTES } from "./events.js";
-import { roomCreateSchema, roomJoinSchema, roomJoinDecisionSchema, roomJoinSettingsSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema, audioOutputStateSchema, networkPingSchema, networkReportSchema } from "./validation.js";
+import { roomCreateSchema, roomJoinSchema, roomJoinDecisionSchema, roomJoinSettingsSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema, audioOutputStateSchema } from "./validation.js";
 import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, getPublicRooms, removeJoinRequestsBySocket, findParticipantBySession, reconnectParticipant, markReconnecting, addChatMessage, getChatMessages } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
 
@@ -426,27 +426,6 @@ io.on("connection", (socket) => {
     if (!authorized) return;
     authorized.participant.deafened = deafened;
     emitParticipants(roomId);
-  });
-
-  socket.on(EVENTS.NETWORK_PING, (payload: unknown, acknowledge?: () => void) => {
-    const parsed = networkPingSchema.safeParse(payload);
-    if (!parsed.success || typeof acknowledge !== "function") return;
-    if (isRateLimited(`network:ping:${socket.id}`, 8, 10_000)) return;
-    if (!getAuthorizedParticipant(socket.id, parsed.data.roomId)) return;
-    acknowledge();
-  });
-
-  socket.on(EVENTS.NETWORK_REPORT, (payload: unknown) => {
-    const parsed = networkReportSchema.safeParse(payload);
-    if (!parsed.success || isRateLimited(`network:report:${socket.id}`, 8, 10_000)) return;
-    const authorized = getAuthorizedParticipant(socket.id, parsed.data.roomId);
-    if (!authorized) return;
-    authorized.participant.pingMs = parsed.data.pingMs;
-    io.to(authorized.room.id).emit(EVENTS.NETWORK_STATUS, {
-      roomId: authorized.room.id,
-      participantId: socket.id,
-      pingMs: parsed.data.pingMs,
-    });
   });
 
   socket.on(EVENTS.CHAT_SEND, (payload: unknown) => {

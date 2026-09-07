@@ -2,6 +2,7 @@
 import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
+export const SIGNALING_URL = process.env.NEXT_PUBLIC_SIGNALING_URL || "https://vynk-mwxh.onrender.com";
 
 export function getParticipantSessionId(): string {
   const key = "vynk_participant_session";
@@ -14,8 +15,7 @@ export function getParticipantSessionId(): string {
 
 export function getSignalingSocket(): Socket {
   if (socket) return socket;
-  const url = process.env.NEXT_PUBLIC_SIGNALING_URL || "https://vynk-mwxh.onrender.com";
-  socket = io(url, {
+  socket = io(SIGNALING_URL, {
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: 5,

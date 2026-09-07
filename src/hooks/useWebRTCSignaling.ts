@@ -20,8 +20,10 @@ type Props = {
   peers: Peer[];
   localScreenStream: MediaStream | null;
   localMicrophoneStream: MediaStream | null;
+  localNetworkPing: number | null;
   onRemoteStream: (peerId: string, stream: MediaStream) => void;
   onRemoteMicrophoneStream: (peerId: string, stream: MediaStream) => void;
+  onRemoteNetworkPing: (peerId: string, pingMs: number) => void;
   onRemotePeerRemoved: (peerId: string) => void;
   isRoomActive: () => boolean;
 };
@@ -60,7 +62,7 @@ async function limitScreenAudioBitrate(sender: RTCRtpSender): Promise<void> {
   }
 }
 
-export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, localMicrophoneStream, onRemoteStream, onRemoteMicrophoneStream, onRemotePeerRemoved, isRoomActive }: Props) {
+export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, localScreenStream, localMicrophoneStream, localNetworkPing, onRemoteStream, onRemoteMicrophoneStream, onRemoteNetworkPing, onRemotePeerRemoved, isRoomActive }: Props) {
   const connections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const localCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
@@ -74,6 +76,8 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
   const retryTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const offerResendTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const previousIsHost = useRef(isHost);
+  const localNetworkPingRef = useRef(localNetworkPing);
+  const onRemoteNetworkPingRef = useRef(onRemoteNetworkPing);
   const [states, setStates] = useState<Record<string, PeerConnectionState>>({});
   const [iceStates, setIceStates] = useState<Record<string, RTCIceConnectionState>>({});
   const [quality, setQuality] = useState<Record<string, PeerQuality>>({});
@@ -167,16 +171,48 @@ export function useWebRTCSignaling({ socket, roomId, selfId, isHost, peers, loca
     setLatency({});
   }, [getTrackedPeerIds, onRemotePeerRemoved, releasePeerResources]);
 
+  const sendNetworkPing = useCallback((channel: RTCDataChannel) => {
+    const pingMs = localNetworkPingRef.current;
+    if (channel.readyState !== "open" || typeof pingMs !== "number") return;
+    try {
+      channel.send(JSON.stringify({ type: "network-status", pingMs }));
+    } catch {
+      // O canal pode fechar entre a checagem e o envio.
+    }
+  }, []);
+
   const trackDataChannel = useCallback((peerId: string, channel: RTCDataChannel) => {
     const channels = dataChannels.current.get(peerId) ?? new Set<RTCDataChannel>();
     channels.add(channel);
     dataChannels.current.set(peerId, channels);
-    channel.onopen = () => setPeerState(peerId, "connected");
+    channel.onopen = () => {
+      setPeerState(peerId, "connected");
+      sendNetworkPing(channel);
+    };
+    channel.onmessage = (event) => {
+      if (typeof event.data !== "string") return;
+      try {
+        const message = JSON.parse(event.data) as { type?: unknown; pingMs?: unknown };
+        if (message.type !== "network-status" || typeof message.pingMs !== "number" || !Number.isInteger(message.pingMs) || message.pingMs < 0 || message.pingMs > 60_000) return;
+        onRemoteNetworkPingRef.current(peerId, message.pingMs);
+      } catch {
+        // Ignora mensagens de controle desconhecidas ou malformadas.
+      }
+    };
     channel.onclose = () => {
       channels.delete(channel);
       if (channels.size === 0) dataChannels.current.delete(peerId);
     };
-  }, [setPeerState]);
+  }, [sendNetworkPing, setPeerState]);
+
+  useEffect(() => {
+    localNetworkPingRef.current = localNetworkPing;
+    dataChannels.current.forEach((channels) => channels.forEach(sendNetworkPing));
+  }, [localNetworkPing, sendNetworkPing]);
+
+  useEffect(() => {
+    onRemoteNetworkPingRef.current = onRemoteNetworkPing;
+  }, [onRemoteNetworkPing]);
 
   const createPeer = useCallback((peerId: string, mode: NegotiationMode, remoteIsHost: boolean) => {
     if (!isRoomActive() || !iceServers || typeof window === "undefined" || typeof window.RTCPeerConnection !== "function") return null;
