@@ -25,10 +25,11 @@ type Props = {
   peerId: string;
   stream: MediaStream;
   volume: number;
+  muted: boolean;
   onPlaybackStateChange: (peerId: string, state: RemoteAudioPlaybackState) => void;
 };
 
-export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: Props) {
+export function RemoteAudio({ peerId, stream, volume, muted, onPlaybackStateChange }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const gainRef = useRef<GainNode | null>(null);
 
@@ -79,6 +80,11 @@ export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: P
 
   useEffect(() => {
     const audio = audioRef.current;
+    if (audio) audio.muted = muted;
+  }, [muted]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
     if (!audio) return;
     let cancelled = false;
 
@@ -96,5 +102,5 @@ export function RemoteAudio({ peerId, stream, volume, onPlaybackStateChange }: P
     return () => { cancelled = true; };
   }, [onPlaybackStateChange, peerId, stream]);
 
-  return <audio ref={audioRef} autoPlay className="hidden" aria-hidden="true" data-vynk-remote-audio={peerId} />;
+  return <audio ref={audioRef} autoPlay muted={muted} className="hidden" aria-hidden="true" data-vynk-remote-audio={peerId} />;
 }

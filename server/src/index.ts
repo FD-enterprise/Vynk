@@ -3,7 +3,7 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH, MAX_SOCKET_PAYLOAD_BYTES } from "./events.js";
-import { roomCreateSchema, roomJoinSchema, roomJoinDecisionSchema, roomJoinSettingsSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema } from "./validation.js";
+import { roomCreateSchema, roomJoinSchema, roomJoinDecisionSchema, roomJoinSettingsSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema, audioOutputStateSchema } from "./validation.js";
 import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, getPublicRooms, removeJoinRequestsBySocket, findParticipantBySession, reconnectParticipant, markReconnecting, addChatMessage, getChatMessages } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
 
@@ -415,6 +415,16 @@ io.on("connection", (socket) => {
     const { room, participant } = authorized;
     participant.micMuted = muted;
     socket.to(roomId).emit(EVENTS.MICROPHONE_STATE, { roomId, participantId: socket.id, muted });
+    emitParticipants(roomId);
+  });
+
+  socket.on(EVENTS.AUDIO_OUTPUT_STATE, (payload: unknown) => {
+    const parsed = audioOutputStateSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const { roomId, deafened } = parsed.data;
+    const authorized = getAuthorizedParticipant(socket.id, roomId);
+    if (!authorized) return;
+    authorized.participant.deafened = deafened;
     emitParticipants(roomId);
   });
 

@@ -16,7 +16,7 @@ export function getRoom(roomId: string): Room | undefined { return rooms.get(roo
 export function createRoom(hostId: string, hostName: string, sessionId: string): Room {
   const id = generateRoomCode();
   const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map(), joinRequests: new Map(), joinRequestNotificationsEnabled: true };
-  const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, presence: "online" };
+  const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, deafened: false, presence: "online" };
   room.participants.set(hostId, host);
   rooms.set(id, room);
   return room;
@@ -25,7 +25,7 @@ export function addParticipant(roomId: string, socketId: string, name: string, s
   const room = getRoom(roomId);
   if (!room) return null;
   if (room.participants.size >= MAX_PARTICIPANTS) return null;
-  const p: Participant = { id: socketId, sessionId, name, isHost: false, canShareScreen: false, joinedAt: Date.now(), micMuted: true, presence: "online" };
+  const p: Participant = { id: socketId, sessionId, name, isHost: false, canShareScreen: false, joinedAt: Date.now(), micMuted: true, deafened: false, presence: "online" };
   room.participants.set(socketId, p);
   return p;
 }

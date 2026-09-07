@@ -8,6 +8,7 @@ export type Participant = {
   canShareScreen: boolean;
   joinedAt: number;
   micMuted: boolean;
+  deafened: boolean;
   presence: PresenceState;
 };
 

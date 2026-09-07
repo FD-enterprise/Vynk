@@ -99,6 +99,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-participant-headphones { width: 17px; height: 17px; display: inline-grid; place-items: center; color: #8e98a6; }
 .vynk-participant-headphones svg { display: block; }
 .vynk-participant.speaking .vynk-participant-headphones { color: #b9e8c8; }
+.vynk-participant-headphones.muted { color: #ff9f8f; }
 .vynk-participant-audio-button { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; color: #b9c0ca; background: transparent; cursor: pointer; }
 .vynk-participant-audio-button:hover { background: rgba(255,255,255,.08); color: #f4f7fa; }
 .vynk-participant-audio-button.muted { color: #ff9f8f; }
