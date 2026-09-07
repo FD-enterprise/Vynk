@@ -5,12 +5,14 @@ import { CaptureRequestGuard, stopMediaStream } from "@/lib/mediaLifecycle";
 
 export type ScreenShareState = "not-sharing" | "requesting-permission" | "sharing" | "stopping" | "error";
 export type ScreenShareSurface = "browser" | "window" | "monitor" | "unknown";
+export type ScreenShareAudioState = "unknown" | "available" | "unavailable";
 
 type DisplayMediaPreferences = DisplayMediaStreamOptions & {
   monitorTypeSurfaces?: "include" | "exclude";
   selfBrowserSurface?: "include" | "exclude";
   surfaceSwitching?: "include" | "exclude";
   systemAudio?: "include" | "exclude";
+  windowAudio?: "system" | "window" | "exclude";
 };
 
 const DISPLAY_MEDIA_PREFERENCES: DisplayMediaPreferences = {
@@ -20,6 +22,7 @@ const DISPLAY_MEDIA_PREFERENCES: DisplayMediaPreferences = {
   selfBrowserSurface: "exclude",
   surfaceSwitching: "include",
   systemAudio: "include",
+  windowAudio: "system",
 };
 
 const SCREEN_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
@@ -33,6 +36,7 @@ export function useScreenShare(onStopped?: () => void) {
   const [state, setState] = useState<ScreenShareState>("not-sharing");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [surface, setSurface] = useState<ScreenShareSurface | null>(null);
+  const [audioState, setAudioState] = useState<ScreenShareAudioState>("unknown");
   const [error, setError] = useState<string | null>(null);
   const activeStream = useRef<MediaStream | null>(null);
   const captureRequest = useRef(new CaptureRequestGuard());
@@ -44,6 +48,7 @@ export function useScreenShare(onStopped?: () => void) {
     activeStream.current = null;
     setStream(null);
     setSurface(null);
+    setAudioState("unknown");
     setState("not-sharing");
     if (notify) onStopped?.();
   }, [onStopped]);
@@ -71,6 +76,7 @@ export function useScreenShare(onStopped?: () => void) {
         audioTrack.contentHint = "music";
         try { await audioTrack.applyConstraints(SCREEN_AUDIO_CONSTRAINTS); } catch { /* O navegador pode não aceitar essas restrições para áudio do sistema. */ }
       }
+      setAudioState(audioTrack ? "available" : "unavailable");
       if (!mounted.current || !captureRequest.current.isCurrent(request)) {
         current.getTracks().forEach((track) => track.stop());
         return null;
@@ -86,6 +92,7 @@ export function useScreenShare(onStopped?: () => void) {
       if (!mounted.current || !captureRequest.current.isCurrent(request)) return null;
       const denied = cause instanceof DOMException && cause.name === "NotAllowedError";
       setSurface(null);
+      setAudioState("unknown");
       setError(denied ? "Permissão para compartilhar a tela foi negada." : "Não foi possível compartilhar a tela.");
       setState("error");
       return null;
@@ -100,6 +107,7 @@ export function useScreenShare(onStopped?: () => void) {
     if (!current) {
       setStream(null);
       setSurface(null);
+      setAudioState("unknown");
       setState("not-sharing");
       setError(null);
       return;
@@ -121,5 +129,5 @@ export function useScreenShare(onStopped?: () => void) {
     };
   }, []);
 
-  return { state, stream, surface, error, start, stop };
+  return { state, stream, surface, audioState, error, start, stop };
 }
