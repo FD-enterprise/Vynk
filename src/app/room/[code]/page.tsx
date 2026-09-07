@@ -16,10 +16,6 @@ type IconName = "arrow" | "check" | "copy" | "expand" | "headphones" | "lock" | 
 type JoinRequest = { roomId: string; participantId: string; participantName: string };
 type JoinPhase = "connecting" | "pending" | "joined" | "rejected";
 
-function networkTone(quality: PeerQuality | undefined): "good" | "degraded" | "poor" | "unknown" {
-  return quality ?? "unknown";
-}
-
 function networkLabel(quality: PeerQuality | undefined): string {
   if (quality === "good") return "Boa";
   if (quality === "degraded") return "Mais ou menos";
@@ -89,7 +85,6 @@ export default function RoomPage() {
   const [screenVolume, setScreenVolume] = useState(100);
   const [participantVolumes, setParticipantVolumes] = useState<Map<string, number>>(new Map());
   const [localNetworkPing, setLocalNetworkPing] = useState<number | null>(null);
-  const [remoteNetworkPings, setRemoteNetworkPings] = useState<Record<string, number>>({});
   const [isDeafened, setIsDeafened] = useState(false);
   const [promptName, setPromptName] = useState(name);
   const [needsName, setNeedsName] = useState(false);
@@ -320,10 +315,6 @@ export default function RoomPage() {
       return next;
     });
   }, [roomLifecycle, roomToken]);
-  const handleRemoteNetworkPing = useCallback((peerId: string, pingMs: number) => {
-    if (!roomLifecycle.isActive(roomToken)) return;
-    setRemoteNetworkPings((current) => current[peerId] === pingMs ? current : { ...current, [peerId]: pingMs });
-  }, [roomLifecycle, roomToken]);
   const handleRemotePeerRemoved = useCallback((peerId: string) => {
     if (!roomLifecycle.isActive(roomToken)) return;
     setRemoteStreams((current) => {
@@ -348,12 +339,6 @@ export default function RoomPage() {
       next.delete(peerId);
       return next;
     });
-    setRemoteNetworkPings((current) => {
-      if (current[peerId] === undefined) return current;
-      const next = { ...current };
-      delete next[peerId];
-      return next;
-    });
   }, [roomLifecycle, roomToken]);
 
   const handleParticipantVolumeChange = useCallback((peerId: string, volume: number) => {
@@ -374,10 +359,8 @@ export default function RoomPage() {
     peers: participants.filter((participant) => participant.presence === "online").map((participant) => ({ id: participant.id, isHost: participant.isHost })),
     localScreenStream: screen.stream,
     localMicrophoneStream: microphone.stream,
-    localNetworkPing,
     onRemoteStream: handleRemoteStream,
     onRemoteMicrophoneStream: handleRemoteMicrophoneStream,
-    onRemoteNetworkPing: handleRemoteNetworkPing,
     onRemotePeerRemoved: handleRemotePeerRemoved,
     isRoomActive,
   });
@@ -578,11 +561,6 @@ export default function RoomPage() {
   const myId = socket?.id ?? "";
   const mediaQualityValues = Object.values(peerQuality);
   const mediaQuality = mediaQualityValues.length === 0 ? null : mediaQualityValues.includes("poor") ? "ruim" : mediaQualityValues.includes("degraded") ? "instável" : mediaQualityValues.every((value) => value === "good") ? "estável" : "conectando";
-  const getPeerNetwork = (participant: Participant) => {
-    const unavailable = participant.presence !== "online";
-    const ping = remoteNetworkPings[participant.id];
-    return { quality: unavailable ? "poor" as const : networkQualityFromPing(ping), ping, unavailable };
-  };
   const voiceStreams = useMemo(() => {
     const next = new Map(remoteMicrophoneStreams);
     if (myId && microphone.stream) next.set(myId, microphone.stream);
@@ -689,14 +667,11 @@ export default function RoomPage() {
               {isHost && joinRequests[0] && <div className="vynk-join-request" role="status"><strong>{joinRequests[0].participantName} quer entrar</strong><span>Essa pessoa está aguardando sua permissão para entrar na sala.</span><div><button onClick={() => handleJoinDecision(joinRequests[0].participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleJoinDecision(joinRequests[0].participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
              {isHost && screenRequest && <div className="vynk-screen-request" role="status"><strong>{screenRequest.participantName} quer transmitir</strong><span>Autorize essa pessoa a compartilhar a tela.</span><div><button onClick={() => handleScreenPermission(screenRequest.participantId, true)} className="vynk-permission-button allow">Permitir</button><button onClick={() => handleScreenPermission(screenRequest.participantId, false)} className="vynk-permission-button">Recusar</button></div></div>}
             <ul className="vynk-participant-list">
-              {participants.filter((p) => p.id !== myId).map((p) => {
-                const network = getPeerNetwork(p);
-                return (
+              {participants.filter((p) => p.id !== myId).map((p) => (
                 <li key={p.id} className={`vynk-participant ${speakingParticipantIds.has(p.id) && !p.micMuted ? "speaking" : ""}`}>
-                   <span className={`vynk-avatar ${p.id === myId ? "mine" : ""} ${speakingParticipantIds.has(p.id) && !p.micMuted ? "speaking" : ""}`} aria-label={speakingParticipantIds.has(p.id) && !p.micMuted ? `${p.name} está falando` : p.name}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-main"><span className="vynk-participant-name-line"><span className="vynk-participant-name-text">{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}</span>{isHost && !p.isHost && p.presence === "online" && <button onClick={() => handleScreenPermission(p.id, !p.canShareScreen)} className="vynk-permission-button">{p.canShareScreen ? "Revogar tela" : "Permitir tela"}</button>}{p.id !== myId && <label className="vynk-participant-volume"><span>Voz <output>{participantVolumes.get(p.id) ?? 100}%</output></span><input type="range" min="0" max="200" step="1" value={participantVolumes.get(p.id) ?? 100} disabled={p.presence !== "online"} onChange={(event) => handleParticipantVolumeChange(p.id, Number(event.currentTarget.value))} aria-label={`Volume da voz de ${p.name}`} /></label>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`} title={p.micMuted ? "Microfone mutado" : "Microfone ativo"}><span className={`vynk-network-status ${networkTone(network.quality)}`} title={`Ping: ${formatConnectionPing(network.ping, network.unavailable)} · Conexão ${network.unavailable ? "Offline" : networkLabel(network.quality)}`}><span className="vynk-network-dot" />{formatConnectionPing(network.ping, network.unavailable)}</span><span className={`vynk-mic-indicator vynk-participant-mic ${p.micMuted ? "muted" : ""}`} role="img" aria-label={p.micMuted ? "Microfone mutado" : "Microfone ativo"}><Icon name="mic" size={14} /></span><span className={`vynk-audio-output-indicator vynk-participant-headphones ${p.deafened ? "muted" : ""}`} role="img" aria-label={p.deafened ? "Não escuta o áudio da sala" : "Áudio da sala ativo"} title={p.deafened ? "Não escuta o áudio da sala" : "Áudio da sala ativo"}><Icon name="headphones" size={15} /></span>{p.id === myId && <button type="button" onClick={handleToggleDeafen} aria-pressed={isDeafened} className={`vynk-participant-audio-button ${isDeafened ? "muted" : ""}`} aria-label={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} title={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"}><span className={`vynk-audio-output-indicator ${isDeafened ? "muted" : ""}`} aria-hidden="true"><Icon name="headphones" size={14} /></span></button>}</span>
+                   <span className={`vynk-avatar ${p.id === myId ? "mine" : ""} ${speakingParticipantIds.has(p.id) && !p.micMuted ? "speaking" : ""}`} aria-label={speakingParticipantIds.has(p.id) && !p.micMuted ? `${p.name} está falando` : p.name}>{p.name.trim().slice(0, 1).toUpperCase()}</span><span className="vynk-participant-main"><span className="vynk-participant-name-line"><span className="vynk-participant-name-text">{p.name}{p.id === myId && <em>você</em>}</span>{p.isHost && <small>HOST</small>}</span>{isHost && !p.isHost && p.presence === "online" && <button onClick={() => handleScreenPermission(p.id, !p.canShareScreen)} className="vynk-permission-button">{p.canShareScreen ? "Revogar tela" : "Permitir tela"}</button>}{p.id !== myId && <label className="vynk-participant-volume"><span>Voz <output>{participantVolumes.get(p.id) ?? 100}%</output></span><input type="range" min="0" max="200" step="1" value={participantVolumes.get(p.id) ?? 100} disabled={p.presence !== "online"} onChange={(event) => handleParticipantVolumeChange(p.id, Number(event.currentTarget.value))} aria-label={`Volume da voz de ${p.name}`} /></label>}</span><span className={`vynk-presence ${p.presence === "online" ? "online" : p.presence === "reconnecting" ? "reconnecting" : "offline"}`} title={p.micMuted ? "Microfone mutado" : "Microfone ativo"}>{p.presence !== "online" && <span className="vynk-network-status poor" title="Participante offline"><span className="vynk-network-dot" />offline</span>}<span className={`vynk-mic-indicator vynk-participant-mic ${p.micMuted ? "muted" : ""}`} role="img" aria-label={p.micMuted ? "Microfone mutado" : "Microfone ativo"}><Icon name="mic" size={14} /></span><span className={`vynk-audio-output-indicator vynk-participant-headphones ${p.deafened ? "muted" : ""}`} role="img" aria-label={p.deafened ? "Não escuta o áudio da sala" : "Áudio da sala ativo"} title={p.deafened ? "Não escuta o áudio da sala" : "Áudio da sala ativo"}><Icon name="headphones" size={15} /></span>{p.id === myId && <button type="button" onClick={handleToggleDeafen} aria-pressed={isDeafened} className={`vynk-participant-audio-button ${isDeafened ? "muted" : ""}`} aria-label={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"} title={isDeafened ? "Reativar áudio da sala" : "Silenciar áudio da sala"}><span className={`vynk-audio-output-indicator ${isDeafened ? "muted" : ""}`} aria-hidden="true"><Icon name="headphones" size={14} /></span></button>}</span>
                 </li>
-                );
-              })}
+              ))}
               {participants.filter((p) => p.id !== myId).length === 0 && !me && <li className="vynk-empty-row"><span className="vynk-skeleton" />Carregando participantes…</li>}
             </ul>
             {me && <div className={`vynk-self-bar ${speakingParticipantIds.has(me.id) && !me.micMuted ? "speaking" : ""}`}>
