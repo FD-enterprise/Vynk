@@ -260,35 +260,44 @@ export default function RoomPage() {
   }, [socket, roomId, roomLifecycle, roomToken, promptName, name]);
 
   useEffect(() => {
-    if (!roomId || joinPhase !== "joined" || connState !== "connected") return;
+    if (!socket || !roomId || joinPhase !== "joined" || connState !== "connected" || !socket.connected) return;
     let cancelled = false;
-    let request: AbortController | null = null;
-    const samplePing = async () => {
-      if (cancelled || request) return;
-      request = new AbortController();
-      const currentRequest = request;
-      const startedAt = performance.now();
-      const timeout = window.setTimeout(() => currentRequest.abort(), 5_000);
-      try {
-        const response = await fetch(`/api/health?ping=${Date.now()}`, { cache: "no-store", signal: currentRequest.signal });
-        if (!response.ok) throw new Error(`Health check returned ${response.status}`);
-        const pingMs = Math.min(60_000, Math.max(0, Math.round(performance.now() - startedAt)));
-        if (!cancelled) setLocalNetworkPing(pingMs);
-      } catch {
-        if (!cancelled) setLocalNetworkPing(null);
-      } finally {
-        window.clearTimeout(timeout);
-        if (request === currentRequest) request = null;
+    let pending = false;
+    let timeout: number | null = null;
+    const samples: number[] = [];
+    const finishSample = (pingMs: number | null) => {
+      if (cancelled || !pending) return;
+      pending = false;
+      if (timeout !== null) window.clearTimeout(timeout);
+      timeout = null;
+      if (pingMs === null) {
+        setLocalNetworkPing(null);
+        return;
       }
+      samples.push(pingMs);
+      if (samples.length > 5) samples.shift();
+      const sorted = [...samples].sort((a, b) => a - b);
+      setLocalNetworkPing(sorted[Math.floor(sorted.length / 2)] ?? pingMs);
     };
-    void samplePing();
-    const interval = window.setInterval(() => { void samplePing(); }, 5_000);
+    const samplePing = () => {
+      if (cancelled || pending || !socket.connected) return;
+      pending = true;
+      const startedAt = performance.now();
+      timeout = window.setTimeout(() => finishSample(null), 5_000);
+      socket.emit(EVENTS.NETWORK_PING, () => {
+        const pingMs = Math.min(60_000, Math.max(0, Math.round(performance.now() - startedAt)));
+        finishSample(pingMs);
+      });
+    };
+    samplePing();
+    const interval = window.setInterval(samplePing, 5_000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
-      request?.abort();
+      pending = false;
+      if (timeout !== null) window.clearTimeout(timeout);
     };
-  }, [connState, joinPhase, roomId]);
+  }, [connState, joinPhase, roomId, socket]);
 
   const handleRemoteStream = useCallback((peerId: string, stream: MediaStream) => {
     if (!roomLifecycle.isActive(roomToken)) return;

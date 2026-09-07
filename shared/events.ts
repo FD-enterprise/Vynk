@@ -25,6 +25,7 @@ export const EVENTS = {
   SCREEN_STOPPED: "screen:stopped",
   MICROPHONE_STATE: "microphone:state",
   AUDIO_OUTPUT_STATE: "audio-output:state",
+  NETWORK_PING: "network:ping",
   CHAT_SEND: "chat:send",
   CHAT_MESSAGE: "chat:message",
   PRESENCE_UPDATE: "presence:update",

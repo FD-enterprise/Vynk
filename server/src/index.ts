@@ -428,6 +428,10 @@ io.on("connection", (socket) => {
     emitParticipants(roomId);
   });
 
+  socket.on(EVENTS.NETWORK_PING, (ack: unknown) => {
+    if (typeof ack === "function") ack();
+  });
+
   socket.on(EVENTS.CHAT_SEND, (payload: unknown) => {
     const parsed = chatSendSchema.safeParse(payload);
     if (!parsed.success) return;
