@@ -16,7 +16,7 @@ export function getRoom(roomId: string): Room | undefined { return rooms.get(roo
 export function createRoom(hostId: string, hostName: string, sessionId: string): Room {
   const id = generateRoomCode();
   const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map(), joinRequests: new Map(), joinRequestNotificationsEnabled: true };
-  const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, deafened: false, presence: "online" };
+  const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, deafened: false, pingMs: null, presence: "online" };
   room.participants.set(hostId, host);
   rooms.set(id, room);
   return room;
@@ -25,7 +25,7 @@ export function addParticipant(roomId: string, socketId: string, name: string, s
   const room = getRoom(roomId);
   if (!room) return null;
   if (room.participants.size >= MAX_PARTICIPANTS) return null;
-  const p: Participant = { id: socketId, sessionId, name, isHost: false, canShareScreen: false, joinedAt: Date.now(), micMuted: true, deafened: false, presence: "online" };
+  const p: Participant = { id: socketId, sessionId, name, isHost: false, canShareScreen: false, joinedAt: Date.now(), micMuted: true, deafened: false, pingMs: null, presence: "online" };
   room.participants.set(socketId, p);
   return p;
 }
@@ -59,6 +59,7 @@ export function reconnectParticipant(roomId: string, oldSocketId: string, newSoc
   room.participants.delete(oldSocketId);
   participant.id = newSocketId;
   participant.name = name;
+  participant.pingMs = null;
   participant.presence = "online";
   room.participants.set(newSocketId, participant);
   if (room.hostId === oldSocketId) room.hostId = newSocketId;
@@ -70,6 +71,7 @@ export function markReconnecting(roomId: string, socketId: string, onExpired: ()
   const participant = room?.participants.get(socketId);
   if (!room || !participant) return undefined;
   participant.presence = "reconnecting";
+  participant.pingMs = null;
   const existing = room.presenceTimers.get(socketId);
   if (existing) clearTimeout(existing);
   const timer = setTimeout(() => {

@@ -27,6 +27,9 @@ export const EVENTS = {
   AUDIO_OUTPUT_STATE: "audio-output:state",
   CHAT_SEND: "chat:send",
   CHAT_MESSAGE: "chat:message",
+  NETWORK_PING: "network:ping",
+  NETWORK_REPORT: "network:report",
+  NETWORK_STATUS: "network:status",
   PRESENCE_UPDATE: "presence:update",
 } as const;
 
@@ -38,7 +41,7 @@ export const MAX_ICE_CANDIDATE_LENGTH = 2_048;
 export const MAX_SOCKET_PAYLOAD_BYTES = 64 * 1024;
 
 export type PresenceState = "online" | "reconnecting" | "offline";
-export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; canShareScreen: boolean; joinedAt: number; micMuted: boolean; deafened: boolean; presence: PresenceState };
+export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; canShareScreen: boolean; joinedAt: number; micMuted: boolean; deafened: boolean; pingMs: number | null; presence: PresenceState };
 export type ChatMessage = { id: string; roomId: string; authorId: string; authorSessionId?: string; authorName: string; text: string; timestamp: number };
 export type RoomCreatePayload = { name: string; sessionId: string };
 export type RoomJoinPayload = { roomId: string; name: string; sessionId: string };
@@ -50,4 +53,7 @@ export type ScreenStatePayload = { roomId: string };
 export type ScreenPermissionPayload = { roomId: string; participantId: string; allowed: boolean };
 export type MicrophoneStatePayload = { roomId: string; muted: boolean };
 export type AudioOutputStatePayload = { roomId: string; deafened: boolean };
+export type NetworkPingPayload = { roomId: string };
+export type NetworkReportPayload = { roomId: string; pingMs: number };
+export type NetworkStatusPayload = NetworkReportPayload & { participantId: string };
 export type PublicRoom = { id: string; hostName: string; participantCount: number; maxParticipants: number; createdAt: number };
