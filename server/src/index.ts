@@ -3,8 +3,8 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { EVENTS, MAX_PARTICIPANTS, MAX_CHAT_MESSAGE_LENGTH, MAX_SOCKET_PAYLOAD_BYTES } from "./events.js";
-import { roomCreateSchema, roomJoinSchema, roomJoinDecisionSchema, roomJoinSettingsSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema, audioOutputStateSchema } from "./validation.js";
-import { createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, getPublicRooms, removeJoinRequestsBySocket, findParticipantBySession, reconnectParticipant, markReconnecting, addChatMessage, getChatMessages } from "./rooms.js";
+import { roomCreateSchema, roomJoinSchema, roomJoinDecisionSchema, roomJoinSettingsSchema, roomJoinLockSchema, roomParticipantActionSchema, roomParticipantMuteSchema, roomLeaveSchema, chatSendSchema, offerSchema, answerSchema, iceCandidateSchema, screenStateSchema, screenPermissionSchema, microphoneStateSchema, audioOutputStateSchema } from "./validation.js";
+import { closeRoom, createRoom, getRoom, addParticipant, removeParticipant, getParticipants, getRoomBySocket, getPublicRooms, removeJoinRequestsBySocket, findParticipantBySession, reconnectParticipant, markReconnecting, addChatMessage, getChatMessages, setJoinLocked, setParticipantForceMuted, transferHost } from "./rooms.js";
 import type { ChatMessage } from "./types.js";
 
 const PORT = Number(process.env.PORT || 3001);
@@ -121,6 +121,7 @@ function joinedPayload(room: NonNullable<ReturnType<typeof getRoom>>, participan
     chatMessages: getChatMessages(room.id),
     screenSharerId: room.screenSharerId,
     joinRequestNotificationsEnabled: room.joinRequestNotificationsEnabled,
+    joinLocked: room.joinLocked,
   };
 }
 
@@ -195,6 +196,7 @@ io.on("connection", (socket) => {
       socket.emit(EVENTS.ROOM_JOIN_PENDING, { roomId, message: "Pedido enviado. Aguarde a aprovação do host." });
       return;
     }
+    if (room.joinLocked) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "Esta sala está bloqueada para novas entradas." }); return; }
     const host = io.sockets.sockets.get(room.hostId);
     if (!host?.connected) { socket.emit(EVENTS.ROOM_ERROR, { roomId, message: "O host está desconectado no momento." }); return; }
     queueJoinRequest(room, name, sessionId);
@@ -255,6 +257,87 @@ io.on("connection", (socket) => {
     if (parsed.data.enabled) emitPendingJoinRequests(authorized.room);
   });
 
+  socket.on(EVENTS.ROOM_JOIN_LOCK, (payload: unknown) => {
+    if (isRateLimited(`room:join-lock:${socket.id}`, 20, 60_000)) return;
+    const parsed = roomJoinLockSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const authorized = getAuthorizedParticipant(socket.id, parsed.data.roomId);
+    if (!authorized || authorized.room.hostId !== socket.id) return;
+    setJoinLocked(authorized.room.id, parsed.data.locked);
+    io.to(authorized.room.id).emit(EVENTS.ROOM_JOIN_LOCK_UPDATED, { roomId: authorized.room.id, locked: parsed.data.locked });
+  });
+
+  socket.on(EVENTS.ROOM_PARTICIPANT_MUTE, (payload: unknown) => {
+    if (isRateLimited(`room:participant-mute:${socket.id}`, 30, 60_000)) return;
+    const parsed = roomParticipantMuteSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const authorized = getAuthorizedParticipant(socket.id, parsed.data.roomId);
+    if (!authorized || authorized.room.hostId !== socket.id || parsed.data.participantId === socket.id) return;
+    if (!setParticipantForceMuted(authorized.room.id, parsed.data.participantId, parsed.data.muted)) return;
+    emitParticipants(authorized.room.id);
+  });
+
+  socket.on(EVENTS.ROOM_PARTICIPANT_KICK, (payload: unknown) => {
+    if (isRateLimited(`room:participant-kick:${socket.id}`, 20, 60_000)) return;
+    const parsed = roomParticipantActionSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const authorized = getAuthorizedParticipant(socket.id, parsed.data.roomId);
+    const target = authorized?.room.participants.get(parsed.data.participantId);
+    if (!authorized || authorized.room.hostId !== socket.id || !target || target.isHost) return;
+    const room = authorized.room;
+    if (room.screenSharerId === target.id) {
+      room.screenSharing = false;
+      room.screenSharerId = null;
+      io.to(room.id).emit(EVENTS.SCREEN_STOPPED, { roomId: room.id, sharerId: target.id });
+    }
+    io.to(target.id).emit(EVENTS.ROOM_PARTICIPANT_KICKED, { roomId: room.id });
+    removeParticipant(room.id, target.id);
+    const targetSocket = io.sockets.sockets.get(target.id);
+    targetSocket?.leave(room.id);
+    targetSocket?.disconnect(true);
+    if (getRoom(room.id)) emitParticipants(room.id);
+  });
+
+  socket.on(EVENTS.ROOM_TRANSFER_HOST, (payload: unknown) => {
+    if (isRateLimited(`room:transfer-host:${socket.id}`, 10, 60_000)) return;
+    const parsed = roomParticipantActionSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const authorized = getAuthorizedParticipant(socket.id, parsed.data.roomId);
+    if (!authorized || authorized.room.hostId !== socket.id || parsed.data.participantId === socket.id) return;
+    const room = transferHost(authorized.room.id, parsed.data.participantId);
+    if (!room) { socket.emit(EVENTS.ROOM_ERROR, { roomId: authorized.room.id, message: "Só é possível transferir o host para alguém online." }); return; }
+    if (room.screenSharerId === socket.id) {
+      room.screenSharing = false;
+      room.screenSharerId = null;
+      io.to(room.id).emit(EVENTS.SCREEN_STOPPED, { roomId: room.id, sharerId: socket.id });
+    }
+    io.to(room.id).emit(EVENTS.ROOM_HOST_CHANGED, { roomId: room.id, hostId: room.hostId, joinRequestNotificationsEnabled: room.joinRequestNotificationsEnabled });
+    if (room.joinRequestNotificationsEnabled) emitPendingJoinRequests(room);
+    emitParticipants(room.id);
+  });
+
+  socket.on(EVENTS.ROOM_CLOSE, (payload: unknown) => {
+    if (isRateLimited(`room:close:${socket.id}`, 5, 60_000)) return;
+    const parsed = roomLeaveSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const authorized = getAuthorizedParticipant(socket.id, parsed.data.roomId);
+    if (!authorized || authorized.room.hostId !== socket.id) return;
+    const roomId = authorized.room.id;
+    const pendingRequests = [...authorized.room.joinRequests.values()];
+    const participants = closeRoom(roomId);
+    io.to(roomId).emit(EVENTS.ROOM_CLOSED, { roomId });
+    participants.forEach((participant) => {
+      const participantSocket = io.sockets.sockets.get(participant.id);
+      participantSocket?.leave(roomId);
+      participantSocket?.disconnect(true);
+    });
+    pendingRequests.forEach((request) => {
+      const pendingSocket = io.sockets.sockets.get(request.socketId);
+      pendingSocket?.emit(EVENTS.ROOM_CLOSED, { roomId });
+      pendingSocket?.disconnect(true);
+    });
+  });
+
   socket.on(EVENTS.ROOM_JOIN, (payload: unknown) => {
     if (isRateLimited(`room:join:${socket.id}`, 20, 60_000)) { socket.emit(EVENTS.ROOM_ERROR, { message: "Muitas tentativas de entrada. Aguarde um minuto." }); return; }
     const parsed = roomJoinSchema.safeParse(payload);
@@ -297,6 +380,7 @@ io.on("connection", (socket) => {
       socket.emit(EVENTS.ROOM_JOIN_PENDING, { roomId: upper, message: pendingRequest[1].approved ? "Entrada aprovada. Reconectando à sala…" : "Pedido enviado. Aguarde a aprovação do host." });
       return;
     }
+    if (room.joinLocked) { socket.emit(EVENTS.ROOM_ERROR, { roomId: upper, message: "Esta sala está bloqueada para novas entradas." }); return; }
     removeJoinRequestsBySocket(socket.id);
     queueJoinRequest(room, name, parsed.data.sessionId);
   });
@@ -413,8 +497,8 @@ io.on("connection", (socket) => {
     const authorized = getAuthorizedParticipant(socket.id, roomId);
     if (!authorized) return;
     const { room, participant } = authorized;
-    participant.micMuted = muted;
-    socket.to(roomId).emit(EVENTS.MICROPHONE_STATE, { roomId, participantId: socket.id, muted });
+    participant.micMuted = participant.forceMuted ? true : muted;
+    socket.to(roomId).emit(EVENTS.MICROPHONE_STATE, { roomId, participantId: socket.id, muted: participant.micMuted });
     emitParticipants(roomId);
   });
 

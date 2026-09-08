@@ -95,6 +95,8 @@ Limite atual: até 5 participantes por sala.
 - [x] Cancelar pedidos pendentes quando necessário
 - [x] Bloquear entrada aprovada quando a sala fica cheia
 - [x] Limite de 5 participantes controlado pelo servidor
+- [x] Controles do host: remover participante, transferir host e encerrar sala
+- [x] Bloquear novas entradas sem cancelar pedidos já existentes
 
 Regra atual:
 
@@ -146,6 +148,7 @@ Arquivos principais: `src/hooks/useScreenShare.ts`, `src/hooks/useWebRTCSignalin
 - [x] Voz bidirecional entre participantes
 - [x] Transceiver separado para microfone e áudio da tela
 - [x] Mutar/desmutar sem renegociação
+- [x] Mute forçado pelo host, com liberação pelo menu de moderação
 - [x] Indicador remoto de microfone
 - [x] Controle individual de voz por participante
 - [x] Volume individual de `0%` a `200%`, padrão `100%`

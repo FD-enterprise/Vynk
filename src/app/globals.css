@@ -107,6 +107,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-participant-headphones svg { display: block; }
 .vynk-participant.speaking .vynk-participant-headphones { color: #b9e8c8; }
 .vynk-participant-headphones.muted { color: #ff9f8f; }
+.vynk-participant-menu-wrap { position: relative; display: inline-flex; }
+.vynk-participant-menu-trigger { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; color: var(--muted); background: transparent; cursor: pointer; }
+.vynk-participant-menu-trigger:hover, .vynk-participant-menu-trigger[aria-expanded="true"] { color: #fff; background: rgba(255,255,255,.08); }
+.vynk-participant-menu-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vynk-participant-menu { position: absolute; z-index: 20; top: calc(100% + 5px); right: 0; display: flex; min-width: 154px; flex-direction: column; gap: 2px; padding: 5px; border: 1px solid #3b4552; border-radius: 8px; background: #20252d; box-shadow: 0 12px 28px rgba(0,0,0,.34); }
+.vynk-participant-menu button { width: 100%; padding: 7px 8px; border: 0; border-radius: 5px; color: var(--soft); background: transparent; font-size: 10px; text-align: left; cursor: pointer; }
+.vynk-participant-menu button:hover, .vynk-participant-menu button:focus-visible { color: #fff; background: #2c333d; outline: none; }
+.vynk-participant-menu button:nth-child(2) { color: #ff9f8f; }
+.vynk-participant-menu button:nth-child(2):hover, .vynk-participant-menu button:nth-child(2):focus-visible { color: #ffc0b6; background: rgba(114,35,28,.28); }
 .vynk-participant-audio-button { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; color: #b9c0ca; background: transparent; cursor: pointer; }
 .vynk-participant-audio-button:hover { background: rgba(255,255,255,.08); color: #f4f7fa; }
 .vynk-participant-audio-button.muted { color: #ff9f8f; }
@@ -179,6 +188,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .vynk-join-request > div { display: flex; gap: 6px; margin-top: 3px; }
 .vynk-join-settings { display: flex; align-items: flex-start; gap: 7px; margin-top: 14px; color: var(--muted); font-size: 10px; line-height: 1.35; cursor: pointer; }
 .vynk-join-settings input { width: 13px; height: 13px; flex: 0 0 auto; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.vynk-join-settings strong { color: var(--soft); font-weight: 500; }
 .vynk-presence { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .vynk-network-status { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-family: var(--font-geist-mono), monospace; font-size: 8px; font-weight: 650; white-space: nowrap; }
 .vynk-network-dot { width: 6px; height: 6px; border-radius: 999px; background: #77808e; box-shadow: 0 0 0 2px rgba(119,128,142,.1); }

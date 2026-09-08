@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addChatMessage, addParticipant, createRoom, getChatMessages, getRoom, markReconnecting, MAX_CHAT_HISTORY, reconnectParticipant, removeParticipant } from "../server/src/rooms";
+import { addChatMessage, addParticipant, closeRoom, createRoom, getChatMessages, getRoom, markReconnecting, MAX_CHAT_HISTORY, reconnectParticipant, removeParticipant, setJoinLocked, setParticipantForceMuted, transferHost } from "../server/src/rooms";
 
 test("room lifecycle removes, reconnects, transfers host, and deletes an empty room", () => {
   const room = createRoom("host-old", "Host", "host-session");
@@ -55,4 +55,22 @@ test("room keeps a bounded chat history that can be replayed after refresh", () 
   assert.equal(getChatMessages(room.id).length, MAX_CHAT_HISTORY);
 
   removeParticipant(room.id, "chat-host");
+});
+
+test("host moderation state is authoritative and room closure cleans up", () => {
+  const room = createRoom("moderation-host", "Host", "moderation-host-session");
+  const guest = addParticipant(room.id, "moderation-guest", "Guest", "moderation-guest-session");
+  assert.ok(guest);
+
+  assert.equal(setParticipantForceMuted(room.id, guest.id, true)?.forceMuted, true);
+  assert.equal(getRoom(room.id)?.participants.get(guest.id)?.micMuted, true);
+  assert.equal(setParticipantForceMuted(room.id, guest.id, false)?.forceMuted, false);
+
+  assert.equal(setJoinLocked(room.id, true)?.joinLocked, true);
+  assert.equal(getRoom(room.id)?.joinLocked, true);
+  assert.equal(transferHost(room.id, guest.id)?.hostId, guest.id);
+  assert.equal(getRoom(room.id)?.participants.get(guest.id)?.isHost, true);
+
+  assert.equal(closeRoom(room.id).length, 2);
+  assert.equal(getRoom(room.id), undefined);
 });

@@ -10,6 +10,14 @@ export const EVENTS = {
   ROOM_JOIN_RESULT: "room:join-result",
   ROOM_JOIN_SETTINGS: "room:join-settings",
   ROOM_JOIN_SETTINGS_UPDATED: "room:join-settings-updated",
+  ROOM_JOIN_LOCK: "room:join-lock",
+  ROOM_JOIN_LOCK_UPDATED: "room:join-lock-updated",
+  ROOM_PARTICIPANT_KICK: "room:participant-kick",
+  ROOM_PARTICIPANT_KICKED: "room:participant-kicked",
+  ROOM_PARTICIPANT_MUTE: "room:participant-mute",
+  ROOM_TRANSFER_HOST: "room:transfer-host",
+  ROOM_CLOSED: "room:closed",
+  ROOM_CLOSE: "room:close",
   ROOM_LEAVE: "room:leave",
   ROOM_CREATED: "room:created",
   ROOM_JOINED: "room:joined",
@@ -39,12 +47,15 @@ export const MAX_ICE_CANDIDATE_LENGTH = 2_048;
 export const MAX_SOCKET_PAYLOAD_BYTES = 64 * 1024;
 
 export type PresenceState = "online" | "reconnecting" | "offline";
-export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; canShareScreen: boolean; joinedAt: number; micMuted: boolean; deafened: boolean; presence: PresenceState };
+export type Participant = { id: string; sessionId: string; name: string; isHost: boolean; canShareScreen: boolean; joinedAt: number; micMuted: boolean; forceMuted: boolean; deafened: boolean; presence: PresenceState };
 export type ChatMessage = { id: string; roomId: string; authorId: string; authorSessionId?: string; authorName: string; text: string; timestamp: number };
 export type RoomCreatePayload = { name: string; sessionId: string };
 export type RoomJoinPayload = { roomId: string; name: string; sessionId: string };
 export type RoomJoinDecisionPayload = { roomId: string; participantId: string; allowed: boolean };
 export type RoomJoinSettingsPayload = { roomId: string; enabled: boolean };
+export type RoomJoinLockPayload = { roomId: string; locked: boolean };
+export type RoomParticipantActionPayload = { roomId: string; participantId: string };
+export type RoomParticipantMutePayload = RoomParticipantActionPayload & { muted: boolean };
 export type RoomLeavePayload = { roomId: string };
 export type PeerSignalPayload = { roomId: string; targetId: string };
 export type ScreenStatePayload = { roomId: string };

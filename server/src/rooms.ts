@@ -15,8 +15,8 @@ export function generateRoomCode(): string {
 export function getRoom(roomId: string): Room | undefined { return rooms.get(roomId.toUpperCase()); }
 export function createRoom(hostId: string, hostName: string, sessionId: string): Room {
   const id = generateRoomCode();
-  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map(), joinRequests: new Map(), joinRequestNotificationsEnabled: true };
-  const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, deafened: false, presence: "online" };
+  const room: Room = { id, hostId, participants: new Map(), chatMessages: [], createdAt: Date.now(), screenSharing: false, screenSharerId: null, presenceTimers: new Map(), joinRequests: new Map(), joinRequestNotificationsEnabled: true, joinLocked: false };
+  const host: Participant = { id: hostId, sessionId, name: hostName, isHost: true, canShareScreen: true, joinedAt: Date.now(), micMuted: true, forceMuted: false, deafened: false, presence: "online" };
   room.participants.set(hostId, host);
   rooms.set(id, room);
   return room;
@@ -25,7 +25,7 @@ export function addParticipant(roomId: string, socketId: string, name: string, s
   const room = getRoom(roomId);
   if (!room) return null;
   if (room.participants.size >= MAX_PARTICIPANTS) return null;
-  const p: Participant = { id: socketId, sessionId, name, isHost: false, canShareScreen: false, joinedAt: Date.now(), micMuted: true, deafened: false, presence: "online" };
+  const p: Participant = { id: socketId, sessionId, name, isHost: false, canShareScreen: false, joinedAt: Date.now(), micMuted: true, forceMuted: false, deafened: false, presence: "online" };
   room.participants.set(socketId, p);
   return p;
 }
@@ -98,6 +98,43 @@ export function getChatMessages(roomId: string): ChatMessage[] {
 export function getRoomBySocket(socketId: string): Room | undefined {
   for (const r of rooms.values()) if (r.participants.has(socketId)) return r;
   return undefined;
+}
+
+export function setParticipantForceMuted(roomId: string, participantId: string, forceMuted: boolean): Participant | undefined {
+  const participant = getRoom(roomId)?.participants.get(participantId);
+  if (!participant) return undefined;
+  participant.forceMuted = forceMuted;
+  if (forceMuted) participant.micMuted = true;
+  return participant;
+}
+
+export function transferHost(roomId: string, participantId: string): Room | undefined {
+  const room = getRoom(roomId);
+  const nextHost = room?.participants.get(participantId);
+  if (!room || !nextHost || nextHost.presence !== "online") return undefined;
+  const currentHost = room.participants.get(room.hostId);
+  if (currentHost) { currentHost.isHost = false; currentHost.canShareScreen = false; }
+  nextHost.isHost = true;
+  nextHost.canShareScreen = true;
+  room.hostId = nextHost.id;
+  return room;
+}
+
+export function setJoinLocked(roomId: string, locked: boolean): Room | undefined {
+  const room = getRoom(roomId);
+  if (!room) return undefined;
+  room.joinLocked = locked;
+  return room;
+}
+
+export function closeRoom(roomId: string): Participant[] {
+  const room = getRoom(roomId);
+  if (!room) return [];
+  room.presenceTimers.forEach((timer) => clearTimeout(timer));
+  room.presenceTimers.clear();
+  room.joinRequests.clear();
+  rooms.delete(room.id);
+  return [...room.participants.values()];
 }
 
 export function getPublicRooms(): PublicRoom[] {

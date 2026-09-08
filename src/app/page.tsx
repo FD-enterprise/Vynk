@@ -131,6 +131,7 @@ export default function Home() {
     let timer: number | null = null;
     const onPending = (data: { roomId: string; message: string }) => { if (data.roomId !== roomId) return; setStatus(data.message); setLoading("pending"); };
     const onJoined = (data: { roomId: string }) => { cleanup(); setStatus(null); setPendingRoomId(null); router.push(`/room/${data.roomId}`); };
+    const onClosed = (data: { roomId: string }) => { if (data.roomId !== roomId) return; cleanup(); setLoading(null); setPendingRoomId(null); setStatus(null); setError("O host encerrou esta sala antes de aprovar sua entrada."); };
     const onResult = (data: { roomId: string; allowed: boolean; message: string }) => {
       if (data.roomId !== roomId) return;
       cleanup(); setLoading(null); setPendingRoomId(null); setStatus(null);
@@ -142,6 +143,7 @@ export default function Home() {
       socket.emit(EVENTS.ROOM_JOIN_CANCEL, { roomId });
       socket.off(EVENTS.ROOM_JOIN_PENDING, onPending);
       socket.off(EVENTS.ROOM_JOINED, onJoined);
+      socket.off(EVENTS.ROOM_CLOSED, onClosed);
       socket.off(EVENTS.ROOM_JOIN_RESULT, onResult);
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off("connect", emit);
@@ -152,6 +154,7 @@ export default function Home() {
     pendingRequestCleanup.current = cleanup;
     socket.on(EVENTS.ROOM_JOIN_PENDING, onPending);
     socket.on(EVENTS.ROOM_JOINED, onJoined);
+    socket.on(EVENTS.ROOM_CLOSED, onClosed);
     socket.on(EVENTS.ROOM_JOIN_RESULT, onResult);
     socket.on(EVENTS.ROOM_ERROR, onError);
     socket.io.on("reconnect", onReconnect);

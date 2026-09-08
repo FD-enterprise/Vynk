@@ -8,6 +8,7 @@ export type Participant = {
   canShareScreen: boolean;
   joinedAt: number;
   micMuted: boolean;
+  forceMuted: boolean;
   deafened: boolean;
   presence: PresenceState;
 };
@@ -23,6 +24,7 @@ export type Room = {
   presenceTimers: Map<string, NodeJS.Timeout>;
   joinRequests: Map<string, JoinRequest>;
   joinRequestNotificationsEnabled: boolean;
+  joinLocked: boolean;
 };
 
 export type JoinRequest = { socketId: string; sessionId: string; name: string; requestedAt: number; approved?: boolean };
