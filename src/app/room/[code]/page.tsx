@@ -110,7 +110,7 @@ export default function RoomPage() {
   const handleMicrophoneState = useCallback((muted: boolean) => {
     if (socket?.connected) socket.emit(EVENTS.MICROPHONE_STATE, { roomId, muted });
   }, [roomId, socket]);
-  const microphone = useMicrophone(handleMicrophoneState, { autoStart: joinPhase === "joined" });
+  const microphone = useMicrophone(handleMicrophoneState);
   const stopScreen = screen.stop;
   const stopMicrophone = microphone.stop;
   const microphoneStateRef = useRef(microphone.state);
