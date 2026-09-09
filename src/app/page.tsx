@@ -22,7 +22,12 @@ export default function Home() {
   const [namePromptError, setNamePromptError] = useState<string | null>(null);
   const pendingRequestCleanup = useRef<(() => void) | null>(null);
 
-  useEffect(() => () => pendingRequestCleanup.current?.(), []);
+  useEffect(() => {
+    // Warm up the signaling connection while the user fills in their name.
+    // This avoids making the first action also pay the server wake-up latency.
+    getSignalingSocket();
+    return () => pendingRequestCleanup.current?.();
+  }, []);
 
   const validateName = (v: string) => v.trim().length >= 1 && v.trim().length <= 24;
 
@@ -31,8 +36,14 @@ export default function Home() {
     pendingRequestCleanup.current?.();
     setError(null); setStatus(null); setLoading("create");
     const socket = getSignalingSocket();
-    const emit = () => socket.emit(EVENTS.ROOM_CREATE, { name: name.trim(), sessionId: getParticipantSessionId() });
+    const emit = () => {
+      if (connectionTimer) window.clearTimeout(connectionTimer);
+      connectionTimer = null;
+      socket.emit(EVENTS.ROOM_CREATE, { name: name.trim(), sessionId: getParticipantSessionId() });
+      timer = window.setTimeout(() => { cleanup(); setLoading((v) => (v === "create" ? null : v)); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
+    };
     let timer: number | null = null;
+    let connectionTimer: number | null = null;
     const onCreated = (data: { roomId: string }) => { cleanup(); localStorage.setItem("vynk_name", name.trim()); router.push(`/room/${data.roomId}`); };
     const onError = (data: { message: string }) => { setError(data.message); setLoading(null); cleanup(); };
     const cleanup = () => {
@@ -40,13 +51,18 @@ export default function Home() {
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off("connect", emit);
       if (timer) window.clearTimeout(timer);
+      if (connectionTimer) window.clearTimeout(connectionTimer);
       if (pendingRequestCleanup.current === cleanup) pendingRequestCleanup.current = null;
     };
     pendingRequestCleanup.current = cleanup;
     socket.on(EVENTS.ROOM_CREATED, onCreated);
     socket.on(EVENTS.ROOM_ERROR, onError);
-    if (socket.connected) emit(); else socket.once("connect", emit);
-    timer = window.setTimeout(() => { cleanup(); setLoading((v) => (v === "create" ? null : v)); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
+    if (socket.connected) {
+      emit();
+    } else {
+      socket.once("connect", emit);
+      connectionTimer = window.setTimeout(() => { cleanup(); setLoading((v) => (v === "create" ? null : v)); setError("O servidor demorou para responder. Tente novamente."); }, 20_000);
+    }
   };
 
   const startCodeJoin = (roomId: string, participantName: string) => {
@@ -103,8 +119,14 @@ export default function Home() {
     pendingRequestCleanup.current?.();
     setError(null); setStatus(null); setLoading("list");
     const socket = getSignalingSocket();
-    const emit = () => socket.emit(EVENTS.ROOM_LIST_REQUEST);
+    const emit = () => {
+      if (connectionTimer) window.clearTimeout(connectionTimer);
+      connectionTimer = null;
+      socket.emit(EVENTS.ROOM_LIST_REQUEST);
+      timer = window.setTimeout(() => { cleanup(); setLoading(null); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
+    };
     let timer: number | null = null;
+    let connectionTimer: number | null = null;
     const onRooms = (data: { rooms: PublicRoom[] }) => { cleanup(); setRooms(data.rooms); setShowRooms(true); setLoading(null); };
     const onError = (data: { message: string }) => { setError(data.message); setLoading(null); cleanup(); };
     const cleanup = () => {
@@ -112,13 +134,18 @@ export default function Home() {
       socket.off(EVENTS.ROOM_ERROR, onError);
       socket.off("connect", emit);
       if (timer) window.clearTimeout(timer);
+      if (connectionTimer) window.clearTimeout(connectionTimer);
       if (pendingRequestCleanup.current === cleanup) pendingRequestCleanup.current = null;
     };
     pendingRequestCleanup.current = cleanup;
     socket.on(EVENTS.ROOM_LIST, onRooms);
     socket.on(EVENTS.ROOM_ERROR, onError);
-    if (socket.connected) emit(); else socket.once("connect", emit);
-    timer = window.setTimeout(() => { cleanup(); setLoading(null); setError("O servidor demorou para responder. Tente novamente."); }, 8000);
+    if (socket.connected) {
+      emit();
+    } else {
+      socket.once("connect", emit);
+      connectionTimer = window.setTimeout(() => { cleanup(); setLoading(null); setError("O servidor demorou para responder. Tente novamente."); }, 20_000);
+    }
   };
 
   const startJoinRequest = (roomId: string, participantName: string) => {
